@@ -1,0 +1,202 @@
+# Figsnap MCP
+
+The Figma file you have open, as MCP tools — and nothing else.
+
+A Figma plugin, a local daemon, and an MCP server. Your coding agent reads the
+design, extracts a node as PNG, React, HTML or CSS, edits the canvas when you
+allow it, and shares a saved set of components with you. No relay, no account, no
+network beyond loopback.
+
+```
+  MCP client              figsnap-mcp              daemon                 the plugin
+  (Claude Code)   stdio    (stateless      HTTP :3058       ws         (open in Figma)
+       ─────────────────►   proxy)          ──────────►   /panel   ──────────►   figma.*
+                                            127.0.0.1 only
+```
+
+Three processes and one rule: `figma.*` exists only while the plugin is open, so
+the plugin holds the connection and everything else asks questions down it.
+
+## What this is not
+
+This repo is a derivative of [Figsnap](../Figsnap), cut down to one job. Figsnap
+ships four products from one `package.json` — the plugin, a Cloudflare Worker
+relay with accounts, an ACP chat client, and this MCP server. If all you want is
+MCP tools and a saved set, you had to clone all of it, build a 4,200-line panel
+you would never open, and load a plugin whose manifest whitelists a Worker you
+would never sign in to.
+
+So: **no ACP client, no harness discovery, no session store, no relay, no
+accounts, no chat, no API browser, no code-export UI.** What is left is the
+extraction engine, the 39 tools, and a panel with three panes.
+
+Figsnap is not modified by any of this, and the two can run side by side — this
+daemon is on port **3058** with its token in `~/.figsnap-mcp/agent-token`, where
+Figsnap's is on 3056 with its token in `~/.figsnap/agent-token`.
+
+## Getting it running
+
+```bash
+npm install
+npm run build          # dist/code.js and dist/ui.html
+npm run daemon         # add --allow-edits to open the writing tools at boot
+```
+
+The daemon prints a token:
+
+```
+figsnap-mcp-daemon 0.1.0
+  panel socket   ws://127.0.0.1:3058/panel
+  http           http://127.0.0.1:3058
+  token          8fT2…
+  edits          off — turn them on in the plugin, or start with --allow-edits
+```
+
+Then, in Figma desktop: **Plugins → Development → Import plugin from manifest**,
+pick this repo's `manifest.json`, and run **Figsnap MCP**. Paste the token into
+**Connect**. Pairing is a one-time job — the token is kept in Figma's own
+per-user storage, so the panel reconnects itself from then on.
+
+Check it:
+
+```bash
+curl -s http://127.0.0.1:3058/health
+# { "ok": true, "panelConnected": true, "editsAllowed": false, ... }
+```
+
+## Wiring up an MCP client
+
+This package is `private`, so there is no `npx figsnap-mcp`. Register it by path:
+
+```bash
+claude mcp add figsnap-mcp -s user -- node /absolute/path/to/FigsnapMCP/agent/mcp-stdio.mjs
+```
+
+`npm run daemon -- --mcp` prints that line with the path already filled in, plus
+the same thing as an `mcpServers` block for clients that take JSON.
+
+Nothing else needs configuring: `agent/mcp-stdio.mjs` defaults to
+`http://127.0.0.1:3058` and reads the token from `~/.figsnap-mcp/agent-token`.
+`FIGSNAP_MCP_URL` and `FIGSNAP_MCP_TOKEN` override either.
+
+Then `claude mcp list` should show `figsnap-mcp · ✔ Connected`, and in a session
+`figma_get_selection` answers about whatever is selected on the canvas.
+
+### Resources
+
+Three things a question about a Figma file almost always needs are addressable
+rather than called for, so a client can `@`-mention them:
+
+| URI | What it is |
+|---|---|
+| `figma://selection` | Everything selected, extracted |
+| `figma://page` | The layer tree, three levels deep |
+| `figma://library` | Components, styles and variables, with ids |
+| `figma://node/{nodeId}` | One layer — `figma://node/21:10314` |
+
+## The tools
+
+39 of them, 13 read and 26 write. The **Tools** pane lists them all with the
+writing ones marked; `GET /tools` is the same list as JSON.
+
+Reading is always allowed. **Writing is not, until you say so** — every mutating
+tool is refused until *Allow edits* is on, which is a switch the designer holds
+rather than a prompt the agent can talk past. A harness running with permission
+prompts disabled still cannot get past it. `--allow-edits` opens the same gate
+from the terminal, for when the work is happening there.
+
+Two tools fold thirteen plugin commands into one argument each, because 39 tool
+descriptions already cost real context on every request:
+
+- `figma_extract` takes `nodeId`, or `nodeIds`, `urls`, `selection: true`,
+  `saved: true` for a batch.
+- `figma_saved` takes an `action`: `list`, `folders`, `save`, `unsave`, `clear`,
+  `move`, `newFolder`, `renameFolder`, `deleteFolder`.
+
+A picture comes back as a real image block, never as base64 in a text field —
+that is what `figma_export_png` is for, one node at a time.
+
+## The saved set
+
+The **Saved** pane is a place to keep the components you keep coming back to:
+folders, *Save selection*, jump-to-node, move, remove. It is reachable over MCP
+as `figma_list_saved` and `figma_saved`, so you and the agent are looking at the
+same list.
+
+It lives in `figma.clientStorage`, keyed by document id. That means: **per user,
+per file, per machine.** Up to 100 entries and 30 folders, one level deep.
+
+**One deliberate loss.** Figsnap also mirrors this set to its relay, so it
+follows you to a second machine. Without the Worker, these sets are local only.
+That is the right trade for this repo — no account, no network, and always
+writable even in a file you can only view — but it is a real difference. If
+cross-device sync is wanted later it is an additive change: the plugin would gain
+a sync target, not a new owner of the data.
+
+## Layout
+
+```
+manifest.json          the Figma plugin manifest; localhost:3058 only
+build.mjs              esbuild → dist/code.js + a self-contained dist/ui.html
+shared/                nodes.mjs (findable types), shape.mjs (what a body means)
+agent/
+  index.mjs            the daemon: WS server, HTTP server, the Edits gate
+  mcp-stdio.mjs        the MCP server; a stateless proxy to the daemon
+  lib/tools.mjs        the 39 tools — one command each, no logic in between
+  lib/plugin-socket.mjs  the panel socket: origin check, token, request/response
+  lib/http.mjs         /health, /tools, /tool
+  lib/gate.mjs         the Edits switch
+src/
+  code.ts              the main thread: 51 commands, extraction and codegen
+  figma-css.ts         Figma's own CSS, rendered
+  daemon.ts            the one address the plugin dials
+  ui/                  the panel: bridge.ts, main.ts, index.html, style.css
+test/                  run.mjs, e2e-mcp.mjs, e2e-plugin.mjs, e2e-panel.mjs, contract.mjs
+```
+
+## Security
+
+The daemon binds `127.0.0.1` only, and two things guard the socket, because a
+local port is reachable by any page you happen to visit:
+
+- **Origin**, checked on upgrade. A plugin iframe is a sandboxed document and
+  sends `null`; the editor sends figma.com. Anything else is closed with 4001.
+  A browser cannot forge this header, and CORS does not apply to an upgrade, so
+  it is the check that matters.
+- **A token** in the query string, because a browser WebSocket cannot set
+  headers. It is the same one HTTP callers send as `x-figsnap-token`, and only
+  `/health` is reachable without it — so the panel can probe before it is paired.
+
+`--new-token` rotates it if one ever leaks.
+
+## Tests
+
+```bash
+npm test          # four suites: no wrangler, no network, no Figma
+npm run typecheck
+```
+
+- `e2e-plugin.mjs` runs the shipped `dist/code.js` against a fake `figma`, wired
+  to a real daemon, and drives it through `POST /tool` — extraction fidelity,
+  `figma_find_nodes`, the saved set including a reload, and a write with the gate
+  both shut and open.
+- `e2e-mcp.mjs` spawns the daemon, fakes the panel as a WebSocket client, and
+  drives a real MCP client over stdio: the guards, the tool list, the batch and
+  image rules, all ten saved-set commands, the resources, and the three ways a
+  call can fail before it reaches Figma.
+- `e2e-panel.mjs` loads the shipped `dist/ui.html` into jsdom with the main
+  thread and the daemon replaced, and drives the designer's side: the panes
+  render what they are sent, the clicks mean what they say, and a destructive
+  folder action arms before it fires.
+- `contract.mjs` is the drift guard. `shared/`, `agent/lib/tools.mjs` and
+  `src/code.ts` exist in both this repo and Figsnap, and the protocol between
+  them has no shared type. So it asserts what a one-sided edit would break: every
+  command a tool can name is a case in `src/code.ts` and every case is reachable
+  from a tool, `MAX_BATCH` agrees, the caps the panel prints are the caps the
+  plugin enforces, the `find_nodes` schema offers exactly `FINDABLE_TYPES`, all
+  three files agree on 3058, and nothing has quietly imported the relay, the
+  accounts or the ACP client back in.
+
+## Licence
+
+MIT.

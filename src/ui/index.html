@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- STYLE -->
+  </head>
+  <body>
+    <header class="topbar">
+      <span class="brand">Figsnap<span class="brand-dim">MCP</span></span>
+      <nav class="tabs" id="tabs">
+        <button class="tab is-active" type="button" data-pane="connect">Connect</button>
+        <button class="tab" type="button" data-pane="tools">Tools</button>
+        <button class="tab" type="button" data-pane="saved">Saved</button>
+      </nav>
+      <span class="link">
+        <span id="link-dot" class="dot off"></span>
+        <span id="link-label" class="link-label">not connected</span>
+      </span>
+    </header>
+
+    <main class="panes">
+      <!-- ------------------------------------------------------- connect -->
+      <section class="pane is-active" id="pane-connect">
+        <div class="column">
+          <div class="card">
+            <div class="card-head">
+              <h2>The daemon</h2>
+              <button id="probe" class="button ghost" type="button">Check again</button>
+            </div>
+            <dl class="facts">
+              <dt>Address</dt>
+              <dd id="fact-url" class="mono">—</dd>
+              <dt>Daemon</dt>
+              <dd id="fact-daemon">not checked yet</dd>
+              <dt>This panel</dt>
+              <dd id="fact-panel">not connected</dd>
+              <dt>Edits</dt>
+              <dd id="fact-edits">off</dd>
+            </dl>
+            <p class="hint">
+              Start it in a terminal with <code>npm run daemon</code>. It prints a token on
+              the line marked <code>token</code>; paste that below. Pairing is a one-time job —
+              the token is kept in this Figma account's own storage.
+            </p>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2>Pairing</h2>
+            </div>
+            <label class="field">
+              <span class="field-label">Daemon socket</span>
+              <input id="url" class="input mono" type="text" spellcheck="false" />
+            </label>
+            <label class="field">
+              <span class="field-label">Token</span>
+              <input id="token" class="input mono" type="password" spellcheck="false"
+                     placeholder="paste the daemon's token" />
+            </label>
+            <div class="row">
+              <label class="check">
+                <input id="show-token" type="checkbox" />
+                <span>Show the token</span>
+              </label>
+              <span class="spacer"></span>
+              <button id="disconnect" class="button secondary" type="button">Disconnect</button>
+              <button id="connect" class="button primary" type="button">Connect</button>
+            </div>
+            <p id="connect-note" class="note" hidden></p>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h2>Reaching it from a terminal</h2>
+            </div>
+            <p class="hint">
+              The daemon is the only thing that talks to Figma. An MCP client reaches it
+              through <code>agent/mcp-stdio.mjs</code>, which needs no configuration on this
+              machine — it reads the same token from <code>~/.figsnap-mcp/agent-token</code>.
+            </p>
+            <pre class="snippet mono" id="mcp-add">claude mcp add figsnap-mcp -s user -- node &lt;repo&gt;/agent/mcp-stdio.mjs</pre>
+            <p class="hint">
+              Nothing here leaves this machine: the socket is loopback only, there is no
+              account, and the saved set below lives in Figma's own per-user storage.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------------- tools -->
+      <section class="pane" id="pane-tools">
+        <div class="toolbar">
+          <label class="switch" title="Every writing tool is refused until this is on">
+            <input id="allow-edits" type="checkbox" />
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-text">Allow edits</span>
+          </label>
+          <span id="edits-note" class="subtle">Reading is always allowed. Writing is not, until you say so.</span>
+          <span class="spacer"></span>
+          <input id="tool-filter" class="input search" type="search" placeholder="Filter tools" />
+          <span id="tool-count" class="subtle"></span>
+        </div>
+        <div class="scroll">
+          <ul id="tool-list" class="tools"></ul>
+          <p id="tools-empty" class="empty">Connect to the daemon to see what it offers.</p>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------------- saved -->
+      <section class="pane" id="pane-saved">
+        <div class="toolbar">
+          <button id="save-selection" class="button primary" type="button">Save selection</button>
+          <button id="new-folder" class="button secondary" type="button">New folder</button>
+          <button id="refresh-saved" class="button ghost" type="button" title="Re-check every entry against the file">Refresh</button>
+          <span class="spacer"></span>
+          <span id="saved-count" class="subtle"></span>
+        </div>
+        <div class="split">
+          <aside class="folders">
+            <ul id="folder-list" class="folder-list"></ul>
+            <div class="folder-actions" id="folder-actions" hidden>
+              <button id="rename-folder" class="button ghost small" type="button">Rename</button>
+              <button id="empty-folder" class="button ghost small" type="button">Empty</button>
+              <button id="delete-folder" class="button ghost small danger" type="button">Delete</button>
+            </div>
+            <p class="hint small">
+              One level of folders, up to 30 of them, and 100 entries in all. The set is
+              per file and per user, kept on this machine.
+            </p>
+          </aside>
+          <div class="scroll entries">
+            <ul id="saved-list" class="saved"></ul>
+            <p id="saved-empty" class="empty">Nothing saved in this file yet. Select a layer and press <b>Save selection</b>.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footbar">
+      <p id="status" class="status"></p>
+    </footer>
+    <!-- SCRIPT -->
+  </body>
+</html>
