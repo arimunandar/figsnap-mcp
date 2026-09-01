@@ -117,7 +117,10 @@ let captureTimer: number | undefined
 // While minimised the window size is not the user's choice, so it is not stored.
 let minimised = false
 
-const DEFAULT_SIZE = { width: 1180, height: 760 }
+// Three panes and a list, not Figsnap's tree-plus-preview-plus-code, so the
+// window that suits it is a good deal smaller. It is only the opening size:
+// whatever the designer drags it to is remembered per file from then on.
+const DEFAULT_SIZE = { width: 760, height: 640 }
 // Minimised is a strip of header, not a small window: it deliberately sits below
 // MIN_SIZE so the canvas is clear while the plugin keeps running.
 // Minimised, the window is a strip of header plus a preview that fits whatever
@@ -143,7 +146,10 @@ function miniPreviewHeight(node: SceneNode): number {
 function resizeMini(previewHeight: number): void {
   figma.ui.resize(MINI_WIDTH, MINI_STRIP + (previewHeight > 0 ? previewHeight + MINI_PREVIEW_PADDING : 0))
 }
-const MIN_SIZE = { width: 520, height: 460 }
+// The floor a stored size is clamped up to. Below this the Saved pane's folder
+// rail and its list stop being two columns and the Connect pane is all scroll,
+// which is a worse panel than a slightly larger one.
+const MIN_SIZE = { width: 460, height: 420 }
 const MAX_SIZE = { width: 1800, height: 1200 }
 const SIZE_KEY = `figsnap-mcp:size:${figma.root.id}`
 
