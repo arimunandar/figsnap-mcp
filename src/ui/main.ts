@@ -135,6 +135,27 @@ function httpBase(): string {
   return daemonUrl.replace(/^ws/, 'http').replace(/\/panel\/?$/, '')
 }
 
+/**
+ * Whether this build is allowed to dial that address at all.
+ *
+ * The manifest names one port, and Figma enforces it as a Content Security
+ * Policy: an address outside it is not refused by the daemon, it is refused by
+ * the browser, with a console error the designer never sees. Worse, the address
+ * can arrive from storage rather than from the field — a Figsnap install that
+ * shared this plugin's id would hand over its own 3056 — so the check belongs
+ * here, before anything is dialled, rather than in the input's validation.
+ */
+function reachable(candidate: string): boolean {
+  try {
+    const wanted = new URL(AGENT_URL)
+    const asked = new URL(candidate)
+    const local = (host: string) => host === 'localhost' || host === '127.0.0.1'
+    return asked.protocol === wanted.protocol && local(asked.hostname) && asked.port === wanted.port
+  } catch {
+    return false
+  }
+}
+
 function authHeaders(): Record<string, string> {
   return daemonToken === '' ? {} : { 'x-figsnap-token': daemonToken }
 }
@@ -259,7 +280,15 @@ showToken.addEventListener('change', () => {
 })
 
 connectButton.addEventListener('click', () => {
-  daemonUrl = urlInput.value.trim() === '' ? AGENT_URL : urlInput.value.trim()
+  const asked = urlInput.value.trim() === '' ? AGENT_URL : urlInput.value.trim()
+  if (!reachable(asked)) {
+    connectNote.hidden = false
+    connectNote.textContent =
+      `The manifest only allows port ${new URL(AGENT_URL).port} on this machine, so ${asked} would be blocked ` +
+      'by Figma before the daemon ever saw it. Use ' + AGENT_URL + '.'
+    return
+  }
+  daemonUrl = asked
   daemonToken = tokenInput.value.trim()
   urlInput.value = daemonUrl
   connectNote.hidden = true
@@ -572,12 +601,24 @@ window.onmessage = (event: MessageEvent) => {
 
     case 'agent-settings': {
       const settings = message as Extract<Incoming, { type: 'agent-settings' }>
-      daemonUrl = settings.url === '' ? AGENT_URL : settings.url
-      daemonToken = settings.token
+      const stored = settings.url === '' ? AGENT_URL : settings.url
+      const usable = reachable(stored)
+      // A token belongs to the daemon it was issued by, so an address this build
+      // cannot reach takes its token with it rather than being retried against
+      // a different daemon on a different port.
+      daemonUrl = usable ? stored : AGENT_URL
+      daemonToken = usable ? settings.token : ''
       urlInput.value = daemonUrl
       tokenInput.value = daemonToken
       factUrl.textContent = daemonUrl
       settingsLoaded = true
+      if (!usable) {
+        connectNote.hidden = false
+        connectNote.textContent =
+          `Ignored a stored address this plugin cannot reach — ${stored}. Its manifest allows port ` +
+          `${new URL(AGENT_URL).port} and nothing else, so pair again with this daemon's token.`
+        rememberSettings()
+      }
       void probe()
       // A paired panel reconnects itself, which makes pairing a one-time job
       // rather than a morning ritual.

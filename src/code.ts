@@ -145,7 +145,7 @@ function resizeMini(previewHeight: number): void {
 }
 const MIN_SIZE = { width: 520, height: 460 }
 const MAX_SIZE = { width: 1800, height: 1200 }
-const SIZE_KEY = `size:${figma.root.id}`
+const SIZE_KEY = `figsnap-mcp:size:${figma.root.id}`
 
 figma.showUI(__html__, { ...DEFAULT_SIZE, themeColors: true })
 
@@ -1289,10 +1289,10 @@ type SavedEntry = {
 
 // Keyed by document so each file keeps its own set. clientStorage is per user
 // and always writable, unlike plugin data on a file the user can only view.
-const STORAGE_KEY = `saved:${figma.root.id}`
+const STORAGE_KEY = `figsnap-mcp:saved:${figma.root.id}`
 // Relay settings belong to the machine, not the file, so they are not scoped by
 // document id: one relay serves every file this user opens.
-const SETTINGS_KEY = 'relay-settings'
+const SETTINGS_KEY = 'figsnap-mcp:relay-settings'
 let saved: SavedEntry[] = []
 // When this set last changed, by this machine's clock. It is what decides which
 // side wins when two devices have both edited — see the sync messages below.
@@ -1357,7 +1357,7 @@ async function sendSettings(): Promise<void> {
 // The session id is the odd one out: it is per conversation, and it is stored
 // because Figma can take the plugin's runtime away mid-answer. Handing it back
 // on reopen lets `session/load` replay what was said instead of starting over.
-const AGENT_KEY = 'agent-settings'
+const AGENT_KEY = 'figsnap-mcp:agent-settings'
 
 type AgentSettings = {
   url: string

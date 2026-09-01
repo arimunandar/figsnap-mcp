@@ -210,6 +210,28 @@ check('and a refusal from the main thread is shown as one',
   $('status').textContent.includes('That layer is gone') && $('status').className.includes('bad'),
   $('status').textContent)
 
+// Figma keys clientStorage by plugin id, so a Figsnap install sharing this
+// plugin's id hands over its own address and token. Dialling it is blocked by
+// the manifest's CSP, with a console error the designer never sees — so the
+// panel refuses it here instead, and says why.
+fromMain({ type: 'agent-settings', url: 'ws://localhost:3056/panel', token: 'someone-elses', cwd: '', harness: '', sessionId: '', writes: false, auto: true })
+await tick(60)
+check('an address this build cannot reach is not dialled', dialled.length === 0, dialled.join())
+check('its token is dropped with it, rather than tried against another daemon',
+  $('token').value === '' && $('url').value === 'ws://localhost:3058/panel',
+  `${$('url').value} ${$('token').value}`)
+check('and the panel says what it ignored and why',
+  $('connect-note').hidden === false && $('connect-note').textContent.includes('3056') &&
+  $('connect-note').textContent.includes('3058'),
+  $('connect-note').textContent)
+
+$('url').value = 'ws://localhost:9999/panel'
+$('connect').click()
+check('typing one by hand is refused before anything is dialled',
+  dialled.length === 0 && $('connect-note').textContent.includes('9999'),
+  $('connect-note').textContent)
+$('url').value = 'ws://localhost:3058/panel'
+
 // A paired panel reconnects itself, which is what makes pairing a one-time job.
 fromMain({ type: 'agent-settings', url: 'ws://localhost:3058/panel', token: 'a-token', cwd: '', harness: '', sessionId: '', writes: false, auto: true })
 await tick(60)

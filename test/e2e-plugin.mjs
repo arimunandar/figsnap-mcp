@@ -96,9 +96,13 @@ await plugin.tool('figma_saved', { action: 'save', nodeIds: ['1:2', '1:3'] })
 const listed = await plugin.tool('figma_list_saved')
 check('saving named ids puts them in the set',
   parsed(listed).entries.map((entry) => entry.id).sort().join() === '1:2,1:3', said(listed).slice(0, 160))
-check('and the set is in clientStorage, keyed by document',
-  plugin.storage.get('saved:doc-1')?.entries?.length === 2,
-  JSON.stringify(plugin.storage.get('saved:doc-1')).slice(0, 120))
+// Namespaced as well as keyed by document: Figma keys clientStorage by plugin
+// id, and a Figsnap install sharing this one's id would otherwise share its
+// saved set too.
+check('and the set is in clientStorage, keyed by document and by this plugin',
+  plugin.storage.get('figsnap-mcp:saved:doc-1')?.entries?.length === 2 &&
+  plugin.storage.get('saved:doc-1') === undefined,
+  [...plugin.storage.keys()].join())
 check('the panel is told too, so its list and the tool cannot disagree',
   plugin.lastPanel('saved')?.entries.length === 2, JSON.stringify(plugin.lastPanel('saved')).slice(0, 120))
 

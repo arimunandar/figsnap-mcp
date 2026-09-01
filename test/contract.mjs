@@ -173,9 +173,25 @@ const daemonSource = await readFile(join(root, 'src/daemon.ts'), 'utf8')
 const indexSource = await readFile(join(root, 'agent/index.mjs'), 'utf8')
 const stdioSource = await readFile(join(root, 'agent/mcp-stdio.mjs'), 'utf8')
 
+const domains = manifest.networkAccess.allowedDomains
 check('the manifest allows the daemon’s port and nothing else',
-  manifest.networkAccess.allowedDomains.join() === 'ws://localhost:3058,http://localhost:3058',
-  manifest.networkAccess.allowedDomains.join())
+  domains.length === 4 && domains.every((domain) => /^(ws|http):\/\/(localhost|127\.0\.0\.1):3058$/.test(domain)),
+  domains.join())
+check('and dev builds are allowed exactly the same',
+  domains.join() === manifest.networkAccess.devAllowedDomains.join())
+// Figma keys clientStorage by plugin id, so two plugins sharing one id share
+// their stored settings — which is how this panel once read Figsnap's daemon
+// address and dialled a port its own manifest forbids.
+check('the plugin has an id of its own, not Figsnap’s',
+  typeof manifest.id === 'string' && manifest.id !== 'REPLACE_ON_PUBLISH' && manifest.id.includes('FIGSNAP_MCP'),
+  manifest.id)
+check('and every clientStorage key is namespaced to this plugin as well',
+  ['STORAGE_KEY', 'SETTINGS_KEY', 'AGENT_KEY', 'SIZE_KEY'].every((name) =>
+    new RegExp(`const ${name} = \`?'?figsnap-mcp:`).test(code)),
+  ['STORAGE_KEY', 'SETTINGS_KEY', 'AGENT_KEY', 'SIZE_KEY']
+    .filter((name) => !new RegExp(`const ${name} = \`?'?figsnap-mcp:`).test(code)).join())
+check('the panel refuses an address outside what the manifest allows',
+  panel.includes('function reachable(') && panel.includes('asked.port === wanted.port'))
 check('and no relay is reachable from the plugin any more',
   !JSON.stringify(manifest).includes('workers.dev'))
 check('the plugin dials 3058', daemonSource.includes("'ws://localhost:3058/panel'"))

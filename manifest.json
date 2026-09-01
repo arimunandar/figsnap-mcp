@@ -1,6 +1,6 @@
 {
   "name": "Figsnap MCP",
-  "id": "REPLACE_ON_PUBLISH",
+  "id": "REPLACE_ON_PUBLISH_FIGSNAP_MCP",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",
@@ -11,13 +11,17 @@
   "networkAccess": {
     "allowedDomains": [
       "ws://localhost:3058",
-      "http://localhost:3058"
+      "http://localhost:3058",
+      "ws://127.0.0.1:3058",
+      "http://127.0.0.1:3058"
     ],
     "devAllowedDomains": [
       "ws://localhost:3058",
-      "http://localhost:3058"
+      "http://localhost:3058",
+      "ws://127.0.0.1:3058",
+      "http://127.0.0.1:3058"
     ],
-    "reasoning": "Talks to figsnap-mcp-daemon on port 3058 — a daemon the user starts on their own machine, which exposes this file to their own MCP client over loopback. That address is named exactly; no wildcards, nothing off this machine, and nothing else on localhost is reachable."
+    "reasoning": "Talks to figsnap-mcp-daemon on port 3058 — a daemon the user starts on their own machine, which exposes this file to their own MCP client over loopback. Only that one port, by both of its names; no wildcards, nothing off this machine, and nothing else on localhost is reachable."
   },
   "enablePrivatePluginApi": true
 }

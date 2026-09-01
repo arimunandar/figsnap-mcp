@@ -34,6 +34,14 @@ Figsnap is not modified by any of this, and the two can run side by side — thi
 daemon is on port **3058** with its token in `~/.figsnap-mcp/agent-token`, where
 Figsnap's is on 3056 with its token in `~/.figsnap/agent-token`.
 
+They are kept apart in Figma too. `clientStorage` is keyed by plugin id, so the
+manifest carries an id of its own rather than Figsnap's `REPLACE_ON_PUBLISH`, and
+every key this plugin writes is prefixed `figsnap-mcp:` on top of that. Sharing
+either one means sharing the stored daemon address, and a panel that inherits
+`ws://localhost:3056` is then blocked by its own manifest's CSP — with a console
+error the designer never sees. The panel also refuses any stored or typed address
+outside the port its manifest allows, and drops the token that came with it.
+
 ## Getting it running
 
 ```bash
