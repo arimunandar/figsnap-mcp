@@ -149,8 +149,15 @@ function reachable(candidate: string): boolean {
   try {
     const wanted = new URL(AGENT_URL)
     const asked = new URL(candidate)
-    const local = (host: string) => host === 'localhost' || host === '127.0.0.1'
-    return asked.protocol === wanted.protocol && local(asked.hostname) && asked.port === wanted.port
+    // Host as well as port, and `localhost` rather than 127.0.0.1: Figma refuses
+    // an IP literal in allowedDomains outright — "must be a valid URL" — so the
+    // loopback address the daemon prints is not one this plugin may dial. To a
+    // CSP they are two different origins whatever they are to a socket.
+    return (
+      asked.protocol === wanted.protocol &&
+      asked.hostname === wanted.hostname &&
+      asked.port === wanted.port
+    )
   } catch {
     return false
   }

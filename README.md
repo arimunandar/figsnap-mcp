@@ -34,6 +34,12 @@ Figsnap is not modified by any of this, and the two can run side by side — thi
 daemon is on port **3058** with its token in `~/.figsnap-mcp/agent-token`, where
 Figsnap's is on 3056 with its token in `~/.figsnap/agent-token`.
 
+One caution on that manifest: Figma validates `allowedDomains` and refuses an IP
+literal — `Invalid value for allowedDomains. 'ws://127.0.0.1:3058' must be a
+valid URL` — and a manifest it refuses is a manifest it does not load, so the
+plugin quietly keeps running the last good one. Name `localhost`, and check the
+console after any change here, because nothing else reports it.
+
 They are kept apart in Figma too. `clientStorage` is keyed by plugin id, so the
 manifest carries an id of its own rather than Figsnap's `REPLACE_ON_PUBLISH`, and
 every key this plugin writes is prefixed `figsnap-mcp:` on top of that. Sharing

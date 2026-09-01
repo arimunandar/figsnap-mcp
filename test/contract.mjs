@@ -175,8 +175,15 @@ const stdioSource = await readFile(join(root, 'agent/mcp-stdio.mjs'), 'utf8')
 
 const domains = manifest.networkAccess.allowedDomains
 check('the manifest allows the daemon’s port and nothing else',
-  domains.length === 4 && domains.every((domain) => /^(ws|http):\/\/(localhost|127\.0\.0\.1):3058$/.test(domain)),
-  domains.join())
+  domains.join() === 'ws://localhost:3058,http://localhost:3058', domains.join())
+// Figma validates this list and refuses an IP literal — "Invalid value for
+// allowedDomains. 'ws://127.0.0.1:3058' must be a valid URL" — and a manifest it
+// refuses is a manifest it does not load, so the plugin silently keeps running
+// the last good one. That failure is invisible except in the console.
+check('and names hosts the way Figma will accept, never an IP literal',
+  domains.every((domain) => !/\d+\.\d+\.\d+\.\d+/.test(domain)), domains.join())
+check('the panel dials the same host the manifest names',
+  panel.includes('asked.hostname === wanted.hostname'))
 check('and dev builds are allowed exactly the same',
   domains.join() === manifest.networkAccess.devAllowedDomains.join())
 // Figma keys clientStorage by plugin id, so two plugins sharing one id share
