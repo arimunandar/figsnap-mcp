@@ -7,6 +7,17 @@
 
 The Figma file you have open, as MCP tools — and nothing else.
 
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_figsnap--mcp-0098FF?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=figsnap-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22figsnap-mcp%22%5D%7D)
+[![Install in Cursor](https://img.shields.io/badge/Cursor-Install_figsnap--mcp-000000?logo=cursor&logoColor=white)](cursor://anysphere.cursor-deeplink/mcp/install?name=figsnap-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImZpZ3NuYXAtbWNwIl19)
+
+```bash
+claude mcp add figsnap-mcp -s user -- npx -y figsnap-mcp
+```
+
+Those install the MCP server. It answers nothing until the daemon is running and
+the Figma plugin is open — see [Getting it running](#getting-it-running), which
+is five steps and takes about two minutes.
+
 A Figma plugin, a local daemon, and an MCP server. Your coding agent reads the
 design, extracts a node as PNG, React, HTML or CSS, edits the canvas when you
 allow it, and shares a saved set of components with you. No relay, no account, no

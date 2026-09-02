@@ -47,13 +47,35 @@ jobs:
 
       # The tag and the version in package.json disagreeing is the one release
       # mistake that is invisible until someone installs the wrong thing.
-      - name: The tag must match the version
+      - name: The tag, package.json and server.json must all agree
         run: |
           tagged="${GITHUB_REF_NAME#v}"
           packaged="$(node -p "require('./package.json').version")"
-          if [ "$tagged" != "$packaged" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package.json version $packaged" >&2
+          declared="$(node -p "require('./server.json').version")"
+          pinned="$(node -p "require('./server.json').packages[0].version")"
+          if [ "$tagged" != "$packaged" ] || [ "$declared" != "$packaged" ] || [ "$pinned" != "$packaged" ]; then
+            echo "Version disagreement — tag $tagged, package.json $packaged, server.json $declared, package pin $pinned" >&2
             exit 1
           fi
 
       - run: npm publish --provenance --access public
+
+      # ------------------------------------------------- the MCP registry
+      #
+      # Metadata only: the registry points at the npm package rather than
+      # hosting anything, which is why this runs after the publish above and
+      # why package.json carries `mcpName`. That field is the proof the npm
+      # package and this server name belong to the same person, and it is only
+      # checked inside a published tarball — so a registry publish can never
+      # run ahead of the npm one.
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      # No secret: the same id-token permission that gives npm its provenance
+      # proves this repository owns the io.github.arimunandar namespace.
+      - name: Authenticate to the MCP registry
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to the MCP registry
+        run: ./mcp-publisher publish

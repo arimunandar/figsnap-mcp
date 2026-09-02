@@ -244,6 +244,14 @@ for (const [what, needle] of [
     ![code, tools, panel, indexSource, stdioSource, daemonSource].some((source) => needle.test(source)))
 }
 
+// The version is one string in package.json, and everything that reports one
+// reads it from there. Two bins and /health used to carry their own copy.
+const versionSource = await readFile(join(root, 'agent/lib/version.mjs'), 'utf8')
+check('the version is read from package.json, not written out again',
+  versionSource.includes("require('../../package.json').version") &&
+  ![indexSource, stdioSource].some((source) => /const VERSION = '/.test(source)),
+  [indexSource, stdioSource].map((source) => (/const VERSION = '/.test(source) ? 'hardcoded' : 'reads it')).join())
+
 const failed = out.filter((ok) => !ok).length
 console.log(`\n${out.length - failed}/${out.length} passed`)
 process.exit(failed === 0 ? 0 : 1)

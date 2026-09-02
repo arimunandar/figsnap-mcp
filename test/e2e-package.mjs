@@ -62,6 +62,37 @@ check('publishing runs the typecheck, the build and the tests first',
 check('and packing builds, so dist is never stale in a tarball',
   manifest.scripts.prepack.includes('build'), manifest.scripts.prepack)
 
+// ----------------------------------------------------------- the MCP registry
+//
+// Four version fields have to agree — the git tag, package.json, server.json and
+// the package pin inside it — and three of them are in files nobody edits
+// together. The registry rejects a mismatch after the npm publish has already
+// gone out, which is the worst moment to find out.
+
+const server = JSON.parse(await readFile(join(root, 'server.json'), 'utf8'))
+
+check('the registry name is the npm ownership proof, and vice versa',
+  server.name === manifest.mcpName && typeof manifest.mcpName === 'string',
+  `${server.name} / ${manifest.mcpName}`)
+// With GitHub authentication the namespace must be the publisher's own, and
+// mcp-publisher refuses anything else — after npm has already been published.
+check('and the namespace is one GitHub auth can prove',
+  /^io\.github\.[a-z0-9-]+\/[a-z0-9-]+$/.test(server.name), server.name)
+check('server.json, its package pin and package.json are the same version',
+  server.version === manifest.version && server.packages[0].version === manifest.version,
+  `${server.version} / ${server.packages[0].version} / ${manifest.version}`)
+check('and it points at this npm package over stdio',
+  server.packages[0].identifier === manifest.name &&
+  server.packages[0].registryType === 'npm' &&
+  server.packages[0].transport.type === 'stdio',
+  `${server.packages[0].identifier} ${server.packages[0].registryType}`)
+// Both are optional, and one is a secret. A registry entry that marked either
+// required would tell every installer to go and find a value they do not need.
+check('neither environment variable is presented as required',
+  server.packages[0].environmentVariables.every((variable) => variable.isRequired === false) &&
+  server.packages[0].environmentVariables.find((v) => v.name === 'FIGSNAP_MCP_TOKEN').isSecret === true,
+  server.packages[0].environmentVariables.map((v) => v.name).join())
+
 // --------------------------------------------------------------------- bins
 
 for (const [name, target] of Object.entries(manifest.bin)) {
@@ -195,6 +226,9 @@ for (const [what, pattern] of [
   ['the build script', /^build\.mjs$/],
   ['the TypeScript config', /^tsconfig\.json$/],
   ['CI configuration', /^\.github\//],
+  // Registry metadata, read by mcp-publisher from the repository. Shipping it
+  // would put a second, staler copy of the version in every install.
+  ['the registry metadata', /^server\.json$/],
   ['anything that looks like a token', /token/i],
   ['node_modules', /^node_modules\//],
 ]) {

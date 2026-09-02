@@ -32,8 +32,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toolManifest } from './lib/tools.mjs'
 import { DEFAULT_AGENT_URL, TOKEN_FILE } from './lib/paths.mjs'
+import { VERSION } from './lib/version.mjs'
 
-const VERSION = '0.1.0'
 
 const BASE = (process.env.FIGSNAP_MCP_URL ?? DEFAULT_AGENT_URL).replace(/\/+$/, '')
 // This repo is not on npm, so `npx figsnap-mcp` is not the way in. The daemon is

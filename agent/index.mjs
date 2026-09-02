@@ -32,8 +32,8 @@ import { createPluginSocket } from './lib/plugin-socket.mjs'
 import { createGate } from './lib/gate.mjs'
 import { createHttpHandler } from './lib/http.mjs'
 import { DEFAULT_PORT, HOST, PANEL_PATH, TOKEN_FILE } from './lib/paths.mjs'
+import { VERSION } from './lib/version.mjs'
 
-const VERSION = '0.1.0'
 // This package is private, so `npx figsnap-mcp` is not the way in. The MCP
 // server is this file's sibling, and naming the real path is the difference
 // between advice that works and advice that looks like it should.

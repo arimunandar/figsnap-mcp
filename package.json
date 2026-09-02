@@ -1,6 +1,7 @@
 {
   "name": "figsnap-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
+  "mcpName": "io.github.arimunandar/figsnap-mcp",
   "description": "The Figma file you have open, as MCP tools. A local daemon and a slim Figma plugin: extract a node as PNG, React, HTML and CSS, read and edit the canvas, and keep a saved set of components — no relay, no account, nothing off your machine.",
   "keywords": [
     "figma",
