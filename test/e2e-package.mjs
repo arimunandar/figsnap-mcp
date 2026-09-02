@@ -206,10 +206,21 @@ const built = await run('npm', ['run', 'build'])
 check('the plugin builds', built.code === 0, built.stderr.slice(-200))
 
 const packed = await run('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'])
+// npm mixes its own log lines into the --json stream, and which lines appear
+// depends on the environment rather than on this package: under GitHub Actions
+// the .npmrc that actions/setup-node writes makes npm 12 emit
+//   npm warn Unknown user config "always-auth"
+// onto the same stdout as the document. Dropping npm's own prefixed lines is
+// the parse that survives that; slicing from the first bracket does not, since
+// a build's "[ui] dist/ui.html" is also a line starting with one.
 let files = []
 try {
-  files = JSON.parse(packed.stdout)[0].files.map((entry) => entry.path)
-} catch {
+  const document = packed.stdout
+    .split('\n')
+    .filter((line) => !/^npm (warn|notice|error|WARN|http)\b/.test(line.trim()))
+    .join('\n')
+  files = JSON.parse(document)[0].files.map((entry) => entry.path)
+} catch (error) {
   files = []
 }
 check('npm pack succeeds and lists what it would send',
