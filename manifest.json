@@ -1,6 +1,6 @@
 {
   "name": "Figsnap MCP",
-  "id": "REPLACE_ON_PUBLISH_FIGSNAP_MCP",
+  "id": "1676818210945046386",
   "api": "1.0.0",
   "main": "dist/code.js",
   "ui": "dist/ui.html",

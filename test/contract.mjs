@@ -193,9 +193,13 @@ check('and dev builds are allowed exactly the same',
 // Figma assigns a real id on first publish and writes it into this file, so the
 // invariant is "not Figsnap's", not "still the placeholder". Asserting the
 // placeholder would turn publishing the plugin into a failing test.
-check('the plugin has an id of its own, not Figsnap’s',
-  typeof manifest.id === 'string' && manifest.id !== '' && manifest.id !== 'REPLACE_ON_PUBLISH',
-  manifest.id)
+// Figma assigned this on the first publish and writes it into manifest.json.
+// It is what identifies later versions as updates to the same plugin rather
+// than a new one — and, because clientStorage is keyed by plugin id, what keeps
+// this plugin's saved sets separate from Figsnap's and its own from version to
+// version. Losing it would silently orphan every designer's saved set.
+check('the plugin keeps the id Figma assigned it',
+  manifest.id === '1676818210945046386', manifest.id)
 check('and every clientStorage key is namespaced to this plugin as well',
   ['STORAGE_KEY', 'SETTINGS_KEY', 'AGENT_KEY', 'SIZE_KEY'].every((name) =>
     new RegExp(`const ${name} = \`?'?figsnap-mcp:`).test(code)),
