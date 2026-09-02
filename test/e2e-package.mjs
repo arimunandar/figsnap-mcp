@@ -232,14 +232,29 @@ const packed = await run('npm', ['pack', '--dry-run', '--json', '--ignore-script
 // onto the same stdout as the document. Dropping npm's own prefixed lines is
 // the parse that survives that; slicing from the first bracket does not, since
 // a build's "[ui] dist/ui.html" is also a line starting with one.
-let files = []
-try {
-  const document = packed.stdout
+/**
+ * The file list out of `npm pack --json`, whichever npm produced it.
+ *
+ * npm 10 answers with an array of one entry. npm 12 answers with an object
+ * keyed by package name. This suite runs on both — the local floor is whatever
+ * Node 20 bundles, and CI installs npm@latest so trusted publishing works — so
+ * reading `[0].files` was right on one and undefined on the other.
+ */
+function packedFiles(stdout) {
+  // npm also mixes its own log lines into this stream in some environments.
+  const document = stdout
     .split('\n')
     .filter((line) => !/^npm (warn|notice|error|WARN|http)\b/.test(line.trim()))
     .join('\n')
-  files = JSON.parse(document)[0].files.map((entry) => entry.path)
-} catch (error) {
+  const parsed = JSON.parse(document)
+  const entry = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0]
+  return entry.files.map((file) => file.path)
+}
+
+let files = []
+try {
+  files = packedFiles(packed.stdout)
+} catch {
   files = []
 }
 check('npm pack succeeds and lists what it would send',
@@ -278,6 +293,23 @@ for (const [what, pattern] of [
 
 check('the tarball is a sensible size for what it is',
   files.length > 12 && files.length < 60, `${files.length} files`)
+
+// Both shapes, so the next npm that changes its mind is caught here rather
+// than in the middle of a release.
+const shapes = {
+  'npm 10, an array': '[{"files":[{"path":"index.mjs"}]}]',
+  'npm 12, keyed by name': '{"figsnap-mcp":{"files":[{"path":"index.mjs"}]}}',
+  'with npm log lines mixed in': 'npm warn Unknown user config "always-auth"\n[{"files":[{"path":"index.mjs"}]}]',
+}
+for (const [what, stdout] of Object.entries(shapes)) {
+  let read = []
+  try {
+    read = packedFiles(stdout)
+  } catch {
+    read = []
+  }
+  check(`the pack output is read as ${what}`, read.join() === 'index.mjs', read.join() || 'nothing')
+}
 
 const failed = out.filter((ok) => !ok).length
 console.log(`\n${out.length - failed}/${out.length} passed`)
