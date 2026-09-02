@@ -96,6 +96,12 @@ check('and packing builds, so dist is never stale in a tarball',
 
 const server = JSON.parse(await readFile(join(root, 'server.json'), 'utf8'))
 
+// The registry enforces this and answers 422 — after npm has published. Ours
+// was 199 characters and cost a version to find out. The npm description has no
+// such limit, which is why they are allowed to differ.
+check('the registry description is inside the 100 characters it allows',
+  typeof server.description === 'string' && server.description.length <= 100,
+  `${server.description.length} chars`)
 check('the registry name is the npm ownership proof, and vice versa',
   server.name === manifest.mcpName && typeof manifest.mcpName === 'string',
   `${server.name} / ${manifest.mcpName}`)
