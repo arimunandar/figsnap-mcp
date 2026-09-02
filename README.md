@@ -370,9 +370,57 @@ npm run typecheck
   three files agree on 3058, and nothing has quietly imported the relay, the
   accounts or the ACP client back in.
 
+## Publishing the plugin to your organisation
+
+The plugin can stay a development install — import the manifest, done — but
+publishing it to your Figma **organisation** puts it in everyone's plugin list
+and updates them automatically, without it appearing in Community.
+
+That option needs a Figma **Organization or Enterprise** plan. On Professional
+the only published option is Community, which is public; a development install
+is the private route there.
+
+1. Build first: `npm run build`. Figma publishes what `dist/` holds, not what
+   `src/` says.
+2. Figma desktop → **Plugins → Development → Figsnap MCP → Publish**.
+3. Choose **Only <your organisation>** rather than Community.
+4. Fill in the listing: a 128×128 icon, a description, and a cover image. An
+   org-only publish skips Community review, so it is live once you submit.
+
+**Figma writes a plugin id into `manifest.json` on that first publish**,
+replacing `REPLACE_ON_PUBLISH_FIGSNAP_MCP`. Commit that change — it is what
+identifies later versions as updates rather than a new plugin, and it is also
+what keeps this plugin's `clientStorage` separate from Figsnap's. To release an
+update, build again and publish again from the same menu.
+
+One thing worth being clear about: this repository and the npm package are
+public, and both carry the built plugin. Org-only publishing controls *listing
+and distribution inside Figma*, not who can obtain the code — it is MIT either
+way.
+
 ## Releasing
 
-CI runs the suites on Node 20, 22 and 24 for every push. A release is a tag:
+CI runs the suites on Node 20, 22 and 24 for every push.
+
+**The first release is manual**, because npm configures a trusted publisher on a
+package's own settings page and there is no page until the package exists:
+
+```bash
+npm login
+npm publish --access public
+```
+
+**Then turn on trusted publishing**, once, at
+`npmjs.com/package/figsnap-mcp/access` → Trusted Publisher → GitHub Actions:
+
+| Field | Value |
+|---|---|
+| Organization or user | `arimunandar` |
+| Repository | `figsnap-mcp` |
+| Workflow filename | `publish.yml` |
+| Environment name | leave empty |
+
+**Every release after that is a tag:**
 
 ```bash
 npm version patch          # writes package.json and the v0.1.1 tag
@@ -380,17 +428,9 @@ git push --follow-tags
 ```
 
 `.github/workflows/publish.yml` picks the tag up, refuses it if it disagrees with
-`package.json`, and publishes with provenance. It uses npm **trusted publishing**
-(OIDC) rather than a token — npm is restricting tokens that bypass 2FA, so
-configure this repository and the `publish` workflow as a trusted publisher on
-npmjs.com before the first release.
-
-To publish by hand instead:
-
-```bash
-npm login
-npm publish --access public
-```
+`package.json`, and publishes with provenance over OIDC — no token exists to
+leak, which matters because npm is restricting tokens that bypass 2FA (account
+changes August 2026, direct publishing January 2027).
 
 `prepublishOnly` typechecks, builds and runs every suite first, so a release that
 would not have worked cannot reach the registry. `npm pack --dry-run` shows

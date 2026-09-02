@@ -190,8 +190,11 @@ check('and dev builds are allowed exactly the same',
 // Figma keys clientStorage by plugin id, so two plugins sharing one id share
 // their stored settings — which is how this panel once read Figsnap's daemon
 // address and dialled a port its own manifest forbids.
+// Figma assigns a real id on first publish and writes it into this file, so the
+// invariant is "not Figsnap's", not "still the placeholder". Asserting the
+// placeholder would turn publishing the plugin into a failing test.
 check('the plugin has an id of its own, not Figsnap’s',
-  typeof manifest.id === 'string' && manifest.id !== 'REPLACE_ON_PUBLISH' && manifest.id.includes('FIGSNAP_MCP'),
+  typeof manifest.id === 'string' && manifest.id !== '' && manifest.id !== 'REPLACE_ON_PUBLISH',
   manifest.id)
 check('and every clientStorage key is namespaced to this plugin as well',
   ['STORAGE_KEY', 'SETTINGS_KEY', 'AGENT_KEY', 'SIZE_KEY'].every((name) =>

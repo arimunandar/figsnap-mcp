@@ -2,8 +2,12 @@
 #
 # Trusted publishing rather than a token: npm is restricting tokens that bypass
 # 2FA — account changes from August 2026, direct publishing from January 2027 —
-# and OIDC has no secret to leak in the first place. Configure this repository
-# and workflow as a trusted publisher on npmjs.com before the first release.
+# and OIDC has no secret to leak in the first place.
+#
+# One ordering constraint, which is not obvious: a trusted publisher is
+# configured on a *package's* settings page, so the package has to exist before
+# it can be set up. The first release is therefore a manual `npm publish`; every
+# release after it runs from here. See "Releasing" in the README.
 #
 #   npm version patch   # or minor / major — this writes the tag
 #   git push --follow-tags
@@ -26,7 +30,10 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    environment: npm
+    # No `environment:` on purpose. The trusted publisher's optional environment
+    # field has to match this exactly, and an empty one is one fewer thing to get
+    # wrong on a first release. Add a protected environment here and on npmjs.com
+    # together, later, if releases ever need an approval step.
     steps:
       - uses: actions/checkout@v4
 
