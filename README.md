@@ -1,5 +1,10 @@
 # Figsnap MCP
 
+[![CI](https://github.com/arimunandar/figsnap-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/arimunandar/figsnap-mcp/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/figsnap-mcp)](https://www.npmjs.com/package/figsnap-mcp)
+[![node](https://img.shields.io/node/v/figsnap-mcp)](https://www.npmjs.com/package/figsnap-mcp)
+[![licence](https://img.shields.io/npm/l/figsnap-mcp)](./LICENSE)
+
 The Figma file you have open, as MCP tools — and nothing else.
 
 A Figma plugin, a local daemon, and an MCP server. Your coding agent reads the
