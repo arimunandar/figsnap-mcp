@@ -21,6 +21,25 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  ' + detail : ''}`)
 }
 
+/**
+ * The environment minus npm's own, for the npm subcommands below.
+ *
+ * This suite runs under `npm test`, and during a release under `npm publish` →
+ * prepublishOnly → `npm test`. npm exports its whole configuration to child
+ * processes as npm_config_*, so a nested `npm pack` inherits the settings of
+ * the publish that is running it — including userconfig, and whatever the CI
+ * runner put in it. Starting the child from a clean slate is the difference
+ * between testing this package and testing the command that happened to invoke
+ * the test.
+ */
+function withoutNpmConfig() {
+  const clean = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!key.startsWith('npm_') && !key.startsWith('NPM_')) clean[key] = value
+  }
+  return clean
+}
+
 function run(command, args, options = {}) {
   return new Promise((settle) => {
     const child = spawn(command, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'], ...options })
@@ -202,10 +221,10 @@ check('and every declaration has something behind it', unimplemented.length === 
 // first line is "[ui] dist/ui.html" — which starts with a bracket, so there is no
 // reliable way to find where the document begins. Separating them is the fix.
 // That prepack builds at all is asserted from package.json above.
-const built = await run('npm', ['run', 'build'])
-check('the plugin builds', built.code === 0, built.stderr.slice(-200))
+const built = await run('npm', ['run', 'build'], { env: withoutNpmConfig() })
+check('the plugin builds', built.code === 0, built.code === 0 ? '' : built.stderr.slice(-300))
 
-const packed = await run('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'])
+const packed = await run('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { env: withoutNpmConfig() })
 // npm mixes its own log lines into the --json stream, and which lines appear
 // depends on the environment rather than on this package: under GitHub Actions
 // the .npmrc that actions/setup-node writes makes npm 12 emit
@@ -224,7 +243,11 @@ try {
   files = []
 }
 check('npm pack succeeds and lists what it would send',
-  packed.code === 0 && files.length > 0, packed.stderr.slice(-200) || packed.stdout.slice(0, 120))
+  packed.code === 0 && files.length > 0,
+  packed.code === 0 && files.length > 0
+    ? `${files.length} files`
+    : `exit ${packed.code} · stdout[${packed.stdout.length}] ${JSON.stringify(packed.stdout.slice(0, 200))} · ` +
+      `stderr ${JSON.stringify(packed.stderr.slice(-200))}`)
 
 for (const wanted of [
   'package.json', 'README.md', 'LICENSE', 'index.mjs', 'index.d.mts', 'manifest.json',
