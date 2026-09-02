@@ -16,6 +16,7 @@
   },
   "include": [
     "src",
-    "shared"
+    "shared",
+    "index.d.mts"
   ]
 }

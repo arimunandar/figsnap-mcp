@@ -1,28 +1,64 @@
 {
   "name": "figsnap-mcp",
   "version": "0.1.0",
-  "private": true,
-  "description": "A Figma plugin and a local daemon that put the open Figma file behind MCP tools: extract a node as PNG, React, HTML and CSS, read and edit the canvas, and keep a saved set of components — with no relay, no account and no network beyond loopback.",
+  "description": "The Figma file you have open, as MCP tools. A local daemon and a slim Figma plugin: extract a node as PNG, React, HTML and CSS, read and edit the canvas, and keep a saved set of components — no relay, no account, nothing off your machine.",
+  "keywords": [
+    "figma",
+    "figma-plugin",
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "design-to-code",
+    "design-tokens",
+    "claude",
+    "ai",
+    "agent"
+  ],
+  "homepage": "https://github.com/arimunandar/figsnap-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/arimunandar/figsnap-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arimunandar/figsnap-mcp.git"
+  },
+  "license": "MIT",
+  "author": "Ari Munandar",
+  "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.0.0"
   },
   "bin": {
-    "figsnap-mcp-daemon": "agent/index.mjs",
-    "figsnap-mcp": "agent/mcp-stdio.mjs"
+    "figsnap-mcp": "agent/mcp-stdio.mjs",
+    "figsnap-mcp-daemon": "agent/index.mjs"
+  },
+  "main": "./index.mjs",
+  "types": "./index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./index.d.mts",
+      "default": "./index.mjs"
+    },
+    "./manifest.json": "./manifest.json",
+    "./package.json": "./package.json"
   },
   "files": [
+    "index.mjs",
+    "index.d.mts",
     "agent",
     "shared",
-    "manifest.json",
-    "README.md"
+    "dist",
+    "manifest.json"
   ],
-  "type": "module",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
     "typecheck": "tsc --noEmit",
     "test": "node test/run.mjs",
-    "daemon": "node agent/index.mjs"
+    "daemon": "node agent/index.mjs",
+    "mcp": "node agent/mcp-stdio.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm run build && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0",
@@ -34,5 +70,7 @@
     "jsdom": "^30.0.1",
     "typescript": "^7.0.2"
   },
-  "license": "MIT"
+  "publishConfig": {
+    "access": "public"
+  }
 }

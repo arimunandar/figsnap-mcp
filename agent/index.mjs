@@ -27,20 +27,32 @@ import { randomBytes } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { homedir } from 'node:os'
 import { WebSocketServer } from 'ws'
 import { createPluginSocket } from './lib/plugin-socket.mjs'
 import { createGate } from './lib/gate.mjs'
 import { createHttpHandler } from './lib/http.mjs'
+import { DEFAULT_PORT, HOST, PANEL_PATH, TOKEN_FILE } from './lib/paths.mjs'
 
 const VERSION = '0.1.0'
 // This package is private, so `npx figsnap-mcp` is not the way in. The MCP
 // server is this file's sibling, and naming the real path is the difference
 // between advice that works and advice that looks like it should.
 const MCP_SERVER = join(dirname(fileURLToPath(import.meta.url)), 'mcp-stdio.mjs')
-const PORT = Number(process.env.FIGSNAP_MCP_PORT ?? 3058)
-const HOST = '127.0.0.1'
-const TOKEN_FILE = join(homedir(), '.figsnap-mcp', 'agent-token')
+/** A port from the environment, or a refusal that names what was wrong with it. */
+function resolvePort() {
+  const raw = process.env.FIGSNAP_MCP_PORT
+  if (raw === undefined || raw.trim() === '') return DEFAULT_PORT
+  const port = Number(raw)
+  // 0 is "any free port" to bind(), which is useless here: the plugin manifest
+  // names one port and Figma will not let it dial another.
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(`FIGSNAP_MCP_PORT is not a port number: ${JSON.stringify(raw)}. Leave it unset for ${DEFAULT_PORT}.`)
+    process.exit(1)
+  }
+  return port
+}
+
+const PORT = resolvePort()
 const quiet = process.argv.includes('--quiet')
 // The Edits gate lives in this daemon, which is what makes it one gate rather
 // than one per client. Its switch has only ever been in the plugin panel, which
@@ -68,9 +80,38 @@ if (process.argv.includes('--mcp')) {
   process.exit(0)
 }
 
+const HELP = `figsnap-mcp-daemon ${VERSION} — the local bridge between the Figma plugin and an MCP client.
+
+  figsnap-mcp-daemon [options]
+
+  --allow-edits     open the writing tools at boot, instead of from the plugin
+  --new-token       rotate the token, invalidating the one the plugin has
+  --quiet           no per-frame logging
+  --mcp             print the MCP client registration and exit
+  --version         print the version and exit
+  --help            this
+
+Environment:
+  FIGSNAP_MCP_PORT         default ${DEFAULT_PORT}
+  FIGSNAP_MCP_TOKEN        use this token instead of ~/.figsnap-mcp/agent-token
+  FIGSNAP_MCP_ALLOW_EDITS  1 or true, same as --allow-edits
+
+The daemon listens on 127.0.0.1 only. It needs the Figma plugin open to answer
+anything: the Figma Plugin API exists only while the plugin is running.`
+
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(HELP)
+  process.exit(0)
+}
+
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  console.log(VERSION)
+  process.exit(0)
+}
+
 const subcommand = typeof process.argv[2] === 'string' && !process.argv[2].startsWith('-') ? process.argv[2] : ''
 if (subcommand !== '') {
-  console.error(`No such command: ${subcommand}. This daemon takes flags only — try --allow-edits, --new-token or --mcp.`)
+  console.error(`No such command: ${subcommand}. This daemon takes flags only — try --help.`)
   process.exit(1)
 }
 
@@ -108,7 +149,7 @@ const gate = createGate({
 })
 
 const server = createServer(createHttpHandler({ plugin, gate, token: TOKEN, version: VERSION }))
-const wss = new WebSocketServer({ server, path: '/panel', maxPayload: 64 * 1024 * 1024 })
+const wss = new WebSocketServer({ server, path: PANEL_PATH, maxPayload: 64 * 1024 * 1024 })
 wss.on('connection', (socket, req) => plugin.handleConnection(socket, req))
 
 // ------------------------------------------------------------- panel frames
@@ -150,9 +191,41 @@ plugin.onPresence((present) => {
   if (present) plugin.send({ kind: 'state', writes: gate.writesAllowed() })
 })
 
+// Binding is the one startup step that fails routinely — Figsnap's own daemon,
+// a second copy of this one, a stale process — and an unhandled 'error' event
+// exits with a stack trace naming nothing the designer can act on.
+function onServerError(error) {
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `Port ${PORT} is already in use, so this daemon did not start.\n\n` +
+        `  · another figsnap-mcp-daemon may already be running — check http://${HOST}:${PORT}/health\n` +
+        '  · or something else has the port; set FIGSNAP_MCP_PORT to move this one, and change the\n' +
+        "    two localhost entries in the plugin's manifest.json to match.",
+    )
+    process.exit(1)
+  }
+  if (error.code === 'EACCES') {
+    console.error(`Not allowed to listen on port ${PORT}. Ports below 1024 need privileges; pick a higher one.`)
+    process.exit(1)
+  }
+  console.error(`The daemon could not start: ${error.message}`)
+  process.exit(1)
+}
+
+server.on('error', onServerError)
+// And on the WebSocket server as well, which is not belt and braces.
+//
+// `ws` attaches its own 'error' listener to the HTTP server and re-emits on the
+// WebSocketServer — and it attaches it where the WebSocketServer is constructed,
+// which is above. An EventEmitter given an 'error' with nobody listening throws,
+// so that re-emit was raising before the handler above ever ran: EADDRINUSE came
+// out as an uncaught exception with a stack trace through node:net, which is
+// exactly the message this function exists to replace.
+wss.on('error', onServerError)
+
 server.listen(PORT, HOST, () => {
   console.log(`figsnap-mcp-daemon ${VERSION}`)
-  console.log(`  panel socket   ws://${HOST}:${PORT}/panel`)
+  console.log(`  panel socket   ws://${HOST}:${PORT}${PANEL_PATH}`)
   console.log(`  http           http://${HOST}:${PORT}`)
   console.log(`  token          ${TOKEN}`)
   console.log(
@@ -164,10 +237,38 @@ server.listen(PORT, HOST, () => {
   console.log(`To reach the same designs from a terminal:  claude mcp add figsnap-mcp -s user -- node ${MCP_SERVER}`)
 })
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    server.close(() => process.exit(0))
-    // A socket that will not close should not hold the process open forever.
-    setTimeout(() => process.exit(0), 500).unref()
-  })
+let stopping = false
+
+function shutdown() {
+  if (stopping) return
+  stopping = true
+  // An open WebSocket keeps the server's close callback from ever firing, so
+  // the panel is told to go before the port is given up.
+  for (const socket of wss.clients) {
+    try {
+      socket.close(1001, 'The daemon is shutting down')
+    } catch {
+      // Already gone; nothing to do about it.
+    }
+  }
+  server.close(() => process.exit(0))
+  // A socket that will not close should not hold the process open forever.
+  setTimeout(() => process.exit(0), 1_000).unref()
 }
+
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, shutdown)
+
+// A rejected promise somewhere in a frame handler must not take the daemon with
+// it: the plugin would stay connected to a process that had stopped answering.
+process.on('unhandledRejection', (reason) => {
+  const why = reason instanceof Error ? reason.stack ?? reason.message : String(reason)
+  console.error(`figsnap-mcp-daemon: an operation failed and was not handled — ${why}`)
+})
+
+// An uncaught exception is a different matter: the state is unknown, so say so
+// plainly and stop rather than answer tool calls from a process in that shape.
+process.on('uncaughtException', (error) => {
+  console.error(`figsnap-mcp-daemon stopped: ${error.stack ?? error.message}`)
+  console.error('Start it again; if this repeats, please report it with the lines above.')
+  process.exit(1)
+})

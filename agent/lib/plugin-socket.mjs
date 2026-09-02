@@ -12,7 +12,7 @@
 // Those frames are handed to `onFrame` rather than interpreted, so the transport
 // stays the relay's and the conversation stays the daemon's.
 
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
 
 const REQUEST_TIMEOUT_MS = 30_000
 
@@ -49,8 +49,17 @@ export function createPluginSocket({ token, log }) {
   const listeners = new Set()
   const watchers = new Set()
 
+  /**
+   * Constant-time, because `===` on a secret leaks its prefix through timing to
+   * anything that can make repeated attempts — and a local port can be dialled
+   * in a loop by any page the designer happens to visit. The length difference
+   * still leaks, which is why the token is a fixed 32 characters.
+   */
   function authorized(candidate) {
-    return token === '' || candidate === token
+    if (token === '') return true
+    const offered = Buffer.from(String(candidate ?? ''))
+    const expected = Buffer.from(token)
+    return offered.length === expected.length && timingSafeEqual(offered, expected)
   }
 
   function connected() {

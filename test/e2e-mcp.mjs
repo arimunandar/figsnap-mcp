@@ -650,13 +650,15 @@ solo.kill('SIGTERM')
 // The whole reason this repo has its own numbers: Figsnap's daemon and this one
 // have to be able to run at the same time.
 
-// Read rather than imported: importing it would connect a second MCP server to
-// this process's own stdio, and the suite's output is on that stdio.
-const stdioSource = await readFile(join(root, 'agent/mcp-stdio.mjs'), 'utf8')
+// agent/lib/paths.mjs exists so these can be imported at all: they used to live
+// in mcp-stdio.mjs, where importing them connected a second MCP server to this
+// process's own stdio — the stdio this suite prints its results on.
+const paths = await import('../agent/lib/paths.mjs')
 check('the MCP client defaults to 3058, not to Figsnap\u2019s 3056',
-  stdioSource.includes("DEFAULT_AGENT_URL = 'http://127.0.0.1:3058'"))
+  paths.DEFAULT_AGENT_URL === 'http://127.0.0.1:3058', paths.DEFAULT_AGENT_URL)
 check('and to a token file of its own',
-  stdioSource.includes("join(homedir(), '.figsnap-mcp', 'agent-token')"))
+  paths.TOKEN_FILE.endsWith('/.figsnap-mcp/agent-token'), paths.TOKEN_FILE)
+check('and reading them started nothing', typeof paths.DEFAULT_PORT === 'number')
 
 panel.socket.close()
 daemon.kill('SIGTERM')

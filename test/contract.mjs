@@ -16,6 +16,7 @@ import { dirname, join } from 'node:path'
 import { TOOLS_BY_NAME, toolManifest } from '../agent/lib/tools.mjs'
 import { FINDABLE_TYPES } from '../shared/nodes.mjs'
 import { batchCommand, savedAddCommand, savedDeleteCommand, folderWriteCommand } from '../shared/shape.mjs'
+import { DEFAULT_AGENT_URL, DEFAULT_PORT, HOST, PANEL_PATH, TOKEN_FILE } from '../agent/lib/paths.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -201,9 +202,26 @@ check('the panel refuses an address outside what the manifest allows',
   panel.includes('function reachable(') && panel.includes('asked.port === wanted.port'))
 check('and no relay is reachable from the plugin any more',
   !JSON.stringify(manifest).includes('workers.dev'))
-check('the plugin dials 3058', daemonSource.includes("'ws://localhost:3058/panel'"))
-check('the daemon listens on 3058', indexSource.includes('FIGSNAP_MCP_PORT ?? 3058'))
-check('the MCP server proxies to 3058', stdioSource.includes("'http://127.0.0.1:3058'"))
+// Imported rather than grepped: agent/lib/paths.mjs is the one definition, and
+// importing it is also the assertion that it can be imported without starting a
+// server — which is what these constants used to cost.
+check('the daemon and the MCP server share one definition of the port',
+  DEFAULT_PORT === 3058 && DEFAULT_AGENT_URL === `http://${HOST}:${DEFAULT_PORT}`,
+  `${DEFAULT_PORT} ${DEFAULT_AGENT_URL}`)
+check('and one definition of the token file',
+  TOKEN_FILE.endsWith('/.figsnap-mcp/agent-token'), TOKEN_FILE)
+/** Source with the comment lines taken out, so prose about a port is not a port. */
+const withoutComments = (source) =>
+  source.split('\n').filter((line) => !line.trim().startsWith('//')).join('\n')
+check('neither writes the port out a second time',
+  ![indexSource, stdioSource].some((source) => withoutComments(source).includes(String(DEFAULT_PORT))),
+  [indexSource, stdioSource]
+    .map((source) => (withoutComments(source).includes(String(DEFAULT_PORT)) ? 'has one' : 'clean')).join())
+// The plugin cannot import that module — it is bundled into a Figma sandbox with
+// no Node — so this is the join that has to be checked rather than shared.
+check('the plugin dials the same port from its own copy',
+  daemonSource.includes(`ws://localhost:${DEFAULT_PORT}${PANEL_PATH}`),
+  daemonSource.split('\n').filter((line) => line.includes('AGENT_URL')).join())
 check('and none of the three reads Figsnap’s environment',
   ![indexSource, stdioSource].some((source) => /FIGSNAP_AGENT_|FIGSNAP_ALLOW_EDITS|FIGSNAP_REQUIRE_LOGIN/.test(source)))
 

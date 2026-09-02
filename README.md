@@ -48,6 +48,30 @@ either one means sharing the stored daemon address, and a panel that inherits
 error the designer never sees. The panel also refuses any stored or typed address
 outside the port its manifest allows, and drops the token that came with it.
 
+## Install
+
+```bash
+npm install -g figsnap-mcp
+```
+
+Two commands come with it:
+
+| | |
+|---|---|
+| `figsnap-mcp-daemon` | the bridge; leave it running while you work |
+| `figsnap-mcp` | the MCP server, spawned by your client — not run by hand |
+
+You can skip the install and let `npx` fetch it, which is what an MCP client
+config usually does. The Figma plugin ships in the package too: after a global
+install its manifest is at
+
+```bash
+npm root -g   # …/lib/node_modules — the manifest is figsnap-mcp/manifest.json
+```
+
+Or clone the repository and `npm install && npm run build`, which is the same
+thing with the sources beside it.
+
 ## Getting it running
 
 Five steps, once.
@@ -55,16 +79,19 @@ Five steps, once.
 **1. Build it.**
 
 ```bash
-npm install
-npm run build          # dist/code.js and dist/ui.html
+npm install -g figsnap-mcp
 ```
+
+From a clone instead: `npm install && npm run build`.
 
 **2. Start the daemon.** Leave it running; it is the only thing that talks to
 Figma.
 
 ```bash
-npm run daemon                    # or: npm run daemon -- --allow-edits
+figsnap-mcp-daemon                # --allow-edits opens the writing tools at boot
 ```
+
+From a clone: `npm run daemon`. `figsnap-mcp-daemon --help` lists the rest.
 
 It prints its address and its token:
 
@@ -77,8 +104,8 @@ figsnap-mcp-daemon 0.1.0
 ```
 
 **3. Load the plugin.** In Figma desktop: **Plugins → Development → Import
-plugin from manifest**, pick this repo's `manifest.json`, then run **Figsnap
-MCP**.
+plugin from manifest**, pick the package's `manifest.json` (`npm root -g` finds
+it, or it is in the repository root), then run **Figsnap MCP**.
 
 **4. Pair the panel.** Copy the `token` line from step 2 into the panel's
 **Connect** pane and press **Connect**. The dot turns green and the Address
@@ -90,10 +117,11 @@ per-user storage, so the panel reconnects itself every time from now on.
 **5. Register the MCP server.**
 
 ```bash
-claude mcp add figsnap-mcp -s user -- node /absolute/path/to/FigsnapMCP/agent/mcp-stdio.mjs
+claude mcp add figsnap-mcp -s user -- npx -y figsnap-mcp
 ```
 
 Restart the client, then `claude mcp list` shows `figsnap-mcp · ✔ Connected`.
+From a clone, name the file instead: `-- node /path/to/FigsnapMCP/agent/mcp-stdio.mjs`.
 
 Check the whole chain:
 
@@ -152,14 +180,17 @@ variable for the MCP client if it cannot read your home directory.
 
 ## Wiring up an MCP client
 
-This package is `private`, so there is no `npx figsnap-mcp`. Register it by path:
-
 ```bash
-claude mcp add figsnap-mcp -s user -- node /absolute/path/to/FigsnapMCP/agent/mcp-stdio.mjs
+claude mcp add figsnap-mcp -s user -- npx -y figsnap-mcp
 ```
 
-`npm run daemon -- --mcp` prints that line with the path already filled in, plus
-the same thing as an `mcpServers` block for clients that take JSON.
+For a client that takes JSON:
+
+```json
+{ "mcpServers": { "figsnap-mcp": { "command": "npx", "args": ["-y", "figsnap-mcp"] } } }
+```
+
+`figsnap-mcp-daemon --mcp` prints both, with paths already filled in.
 
 Then `claude mcp list` should show `figsnap-mcp · ✔ Connected`, and in a session
 `figma_get_selection` answers about whatever is selected on the canvas.
@@ -254,6 +285,8 @@ a sync target, not a new owner of the data.
 ## Layout
 
 ```
+index.mjs              the library entry point; importing it starts nothing
+index.d.mts            hand-written types for it
 manifest.json          the Figma plugin manifest; localhost:3058 only
 build.mjs              esbuild → dist/code.js + a self-contained dist/ui.html
 shared/                nodes.mjs (findable types), shape.mjs (what a body means)
@@ -264,13 +297,35 @@ agent/
   lib/plugin-socket.mjs  the panel socket: origin check, token, request/response
   lib/http.mjs         /health, /tools, /tool
   lib/gate.mjs         the Edits switch
+  lib/paths.mjs        the port, the host and the token file, defined once
 src/
   code.ts              the main thread: 51 commands, extraction and codegen
   figma-css.ts         Figma's own CSS, rendered
   daemon.ts            the one address the plugin dials
   ui/                  the panel: bridge.ts, main.ts, index.html, style.css
-test/                  run.mjs, e2e-mcp.mjs, e2e-plugin.mjs, e2e-panel.mjs, contract.mjs
+test/                  run.mjs and five suites; see Tests below
+.github/workflows/     CI on Node 20, 22 and 24; publish on a version tag
 ```
+
+## Using it as a library
+
+Most people want the two commands. If you are building your own bridge, the
+package exports the catalogue and the pieces the daemon is assembled from:
+
+```js
+import { toolManifest, createGate, createPluginSocket, createHttpHandler } from 'figsnap-mcp'
+
+console.log(toolManifest().length)  // 39
+```
+
+Importing it starts no server and opens no socket — `agent/mcp-stdio.mjs`
+connects an MCP server to stdio the moment it loads, so it is deliberately not
+re-exported, and the constants that used to live on it are in
+`agent/lib/paths.mjs`. `index.d.mts` is hand-written and the test suite checks it
+against the runtime in both directions.
+
+Semver applies from 1.0.0. While this is 0.x, the factories are the part most
+likely to move; the catalogue and the constants are the stable half.
 
 ## Security
 
@@ -314,6 +369,32 @@ npm run typecheck
   plugin enforces, the `find_nodes` schema offers exactly `FINDABLE_TYPES`, all
   three files agree on 3058, and nothing has quietly imported the relay, the
   accounts or the ACP client back in.
+
+## Releasing
+
+CI runs the suites on Node 20, 22 and 24 for every push. A release is a tag:
+
+```bash
+npm version patch          # writes package.json and the v0.1.1 tag
+git push --follow-tags
+```
+
+`.github/workflows/publish.yml` picks the tag up, refuses it if it disagrees with
+`package.json`, and publishes with provenance. It uses npm **trusted publishing**
+(OIDC) rather than a token — npm is restricting tokens that bypass 2FA, so
+configure this repository and the `publish` workflow as a trusted publisher on
+npmjs.com before the first release.
+
+To publish by hand instead:
+
+```bash
+npm login
+npm publish --access public
+```
+
+`prepublishOnly` typechecks, builds and runs every suite first, so a release that
+would not have worked cannot reach the registry. `npm pack --dry-run` shows
+exactly what would be sent; `test/e2e-package.mjs` asserts those contents.
 
 ## Licence
 

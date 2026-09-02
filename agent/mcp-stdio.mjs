@@ -28,19 +28,29 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { toolManifest } from './lib/tools.mjs'
+import { DEFAULT_AGENT_URL, TOKEN_FILE } from './lib/paths.mjs'
 
-export const DEFAULT_AGENT_URL = 'http://127.0.0.1:3058'
-export const TOKEN_FILE = join(homedir(), '.figsnap-mcp', 'agent-token')
+const VERSION = '0.1.0'
 
-const BASE = process.env.FIGSNAP_MCP_URL ?? DEFAULT_AGENT_URL
+const BASE = (process.env.FIGSNAP_MCP_URL ?? DEFAULT_AGENT_URL).replace(/\/+$/, '')
 // This repo is not on npm, so `npx figsnap-mcp` is not the way in. The daemon is
 // this file's sibling, so the advice for starting it can name the real path
 // rather than a package that does not exist.
 const DAEMON = join(dirname(fileURLToPath(import.meta.url)), 'index.mjs')
+
+/**
+ * How long to wait on the daemon before giving up on one call.
+ *
+ * Longer than the daemon's own 30s wait for the panel, so its answer — which
+ * names which of the three things went wrong — wins the race and the caller is
+ * told something useful. Without any timeout at all, a daemon that accepted the
+ * connection and then stopped answering hangs the MCP client for ever: there is
+ * no cancellation on a tool call, so the session simply stops.
+ */
+const CALL_TIMEOUT_MS = 45_000
 
 /** The daemon's own token file, so a client on this machine needs no setup. */
 async function resolveToken() {
@@ -48,6 +58,24 @@ async function resolveToken() {
   if (typeof fromEnv === 'string' && fromEnv !== '') return fromEnv
   const stored = await readFile(TOKEN_FILE, 'utf8').catch(() => null)
   return stored === null ? '' : stored.trim()
+}
+
+if (process.argv.includes('--version') || process.argv.includes('-v')) {
+  console.log(VERSION)
+  process.exit(0)
+}
+
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  console.log(
+    `figsnap-mcp ${VERSION} — the open Figma file, as MCP tools.\n\n` +
+      'This is an MCP server: it speaks the protocol on stdin and stdout, so it is spawned by a\n' +
+      'client rather than run by hand.\n\n' +
+      '  claude mcp add figsnap-mcp -s user -- npx -y figsnap-mcp\n\n' +
+      'It needs figsnap-mcp-daemon running on the machine with Figma open, and reads that\n' +
+      "daemon's token from ~/.figsnap-mcp/agent-token. Set FIGSNAP_MCP_URL or FIGSNAP_MCP_TOKEN\n" +
+      'to override either.',
+  )
+  process.exit(0)
 }
 
 const TOKEN = await resolveToken()
@@ -64,10 +92,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolManif
 /** Why a call could not even be attempted, in words the caller can act on. */
 function unreachable(error) {
   const why = error instanceof Error ? error.message : String(error)
-  const refused = why.includes('ECONNREFUSED') || why.includes('fetch failed')
+  if (error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+    return (
+      `The figsnap-mcp daemon at ${BASE} accepted the request and did not answer within ` +
+      `${Math.round(CALL_TIMEOUT_MS / 1000)}s. It is probably wedged — restart it, and check the Figma ` +
+      'plugin is still open.'
+    )
+  }
+  const refused = why.includes('ECONNREFUSED') || why.includes('fetch failed') || why.includes('ECONNRESET')
   return refused
-    ? `No figsnap-mcp daemon at ${BASE}. Start it with \`node ${DAEMON}\` on the machine running Figma, ` +
-        'then open the plugin so it has a file to reach.'
+    ? `No figsnap-mcp daemon at ${BASE}. Start it with \`figsnap-mcp-daemon\` on the machine running Figma ` +
+        `(or \`node ${DAEMON}\`), then open the plugin so it has a file to reach.`
     : `The figsnap-mcp daemon is not answering: ${why}`
 }
 
@@ -84,8 +119,14 @@ async function callTool(name, args) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-figsnap-token': TOKEN },
       body: JSON.stringify({ name, arguments: args ?? {} }),
+      signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
     })
-    answer = await response.json()
+    // A daemon answering something that is not JSON is a different fault from
+    // one refusing the call, and "Unexpected token < in JSON" says neither.
+    answer = await response.json().catch(() => null)
+    if (answer === null) {
+      return { error: `The figsnap-mcp daemon answered ${response.status} with something that is not JSON.` }
+    }
   } catch (error) {
     // The daemon going away mid-run is the common case: the designer quit it,
     // or the machine slept. Say so rather than returning a protocol error, so
@@ -97,7 +138,8 @@ async function callTool(name, args) {
     return {
       error:
         'The figsnap-mcp daemon rejected the token. It writes one to ~/.figsnap-mcp/agent-token; ' +
-        `set FIGSNAP_MCP_TOKEN to that value, or run \`node ${DAEMON}\` to create it.`,
+        'read it with `cat ~/.figsnap-mcp/agent-token` and set FIGSNAP_MCP_TOKEN to that value, or run ' +
+        '`figsnap-mcp-daemon` to create it.',
     }
   }
   // The third way this fails, and the one that used to arrive as a timeout: the

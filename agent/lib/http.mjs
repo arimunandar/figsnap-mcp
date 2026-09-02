@@ -14,7 +14,16 @@
 import { base64Bytes } from '../../shared/shape.mjs'
 import { TOOLS_BY_NAME, toolManifest } from './tools.mjs'
 
-const BODY_LIMIT = 1_000_000
+/**
+ * How large a tool call may be.
+ *
+ * 1 MB was too small for the one tool that carries a payload: figma_insert_image
+ * takes an image as base64, which is a third larger than the file, so a 750 kB
+ * screenshot was refused with "Request body too large" and nothing saying which
+ * limit it had hit. 16 MB covers any image worth putting on a canvas and still
+ * bounds what one request can make this process allocate.
+ */
+const BODY_LIMIT = 16 * 1024 * 1024
 
 export function applyCors(req, res) {
   const origin = req.headers.origin
@@ -43,7 +52,8 @@ function readBody(req) {
     req.on('data', (chunk) => {
       size += chunk.length
       if (size > BODY_LIMIT) {
-        fail(new Error('Request body too large'))
+        fail(new Error(`Request body too large: over ${Math.round(BODY_LIMIT / 1024 / 1024)} MB. ` +
+          'If this is figma_insert_image, the image is bigger than this bridge will carry — resize it first.'))
         req.destroy()
         return
       }
@@ -213,6 +223,21 @@ export function createHttpHandler({ plugin, gate, token, version }) {
 
       if (url.pathname === '/tool' && req.method === 'POST') {
         const body = await readBody(req)
+        // A body that is not an object, or one with no tool named, would reach
+        // runTool as `undefined` and come back as "Unknown tool: undefined" —
+        // which describes the symptom rather than the mistake.
+        if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+          sendJson(res, 400, { error: 'The body of a tool call must be a JSON object: { "name": …, "arguments": … }' })
+          return
+        }
+        if (typeof body.name !== 'string' || body.name === '') {
+          sendJson(res, 400, { error: 'No tool named. Pass { "name": "figma_get_selection", "arguments": {} }.' })
+          return
+        }
+        if (body.arguments !== undefined && (typeof body.arguments !== 'object' || body.arguments === null)) {
+          sendJson(res, 400, { error: `"arguments" must be an object, or absent. Got ${typeof body.arguments}.` })
+          return
+        }
         try {
           const content = await runTool({ plugin, gate, name: body.name, args: body.arguments })
           sendJson(res, 200, { content })

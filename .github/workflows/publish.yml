@@ -1,0 +1,52 @@
+# Publish to npm when a version tag is pushed.
+#
+# Trusted publishing rather than a token: npm is restricting tokens that bypass
+# 2FA — account changes from August 2026, direct publishing from January 2027 —
+# and OIDC has no secret to leak in the first place. Configure this repository
+# and workflow as a trusted publisher on npmjs.com before the first release.
+#
+#   npm version patch   # or minor / major — this writes the tag
+#   git push --follow-tags
+#
+# `npm publish` runs prepublishOnly, which typechecks, builds and tests, so a
+# release that would not have worked never reaches the registry.
+
+name: Publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Required for trusted publishing and for the provenance attestation.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+
+      # The tag and the version in package.json disagreeing is the one release
+      # mistake that is invisible until someone installs the wrong thing.
+      - name: The tag must match the version
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          packaged="$(node -p "require('./package.json').version")"
+          if [ "$tagged" != "$packaged" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $packaged" >&2
+            exit 1
+          fi
+
+      - run: npm publish --provenance --access public
