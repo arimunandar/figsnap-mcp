@@ -50,33 +50,105 @@ outside the port its manifest allows, and drops the token that came with it.
 
 ## Getting it running
 
+Five steps, once.
+
+**1. Build it.**
+
 ```bash
 npm install
 npm run build          # dist/code.js and dist/ui.html
-npm run daemon         # add --allow-edits to open the writing tools at boot
 ```
 
-The daemon prints a token:
+**2. Start the daemon.** Leave it running; it is the only thing that talks to
+Figma.
+
+```bash
+npm run daemon                    # or: npm run daemon -- --allow-edits
+```
+
+It prints its address and its token:
 
 ```
 figsnap-mcp-daemon 0.1.0
   panel socket   ws://127.0.0.1:3058/panel
   http           http://127.0.0.1:3058
-  token          8fT2…
+  token          8fT2qN4vRk1pXwLzYc7BhJ0mAeUdSg9T
   edits          off — turn them on in the plugin, or start with --allow-edits
 ```
 
-Then, in Figma desktop: **Plugins → Development → Import plugin from manifest**,
-pick this repo's `manifest.json`, and run **Figsnap MCP**. Paste the token into
-**Connect**. Pairing is a one-time job — the token is kept in Figma's own
-per-user storage, so the panel reconnects itself from then on.
+**3. Load the plugin.** In Figma desktop: **Plugins → Development → Import
+plugin from manifest**, pick this repo's `manifest.json`, then run **Figsnap
+MCP**.
 
-Check it:
+**4. Pair the panel.** Copy the `token` line from step 2 into the panel's
+**Connect** pane and press **Connect**. The dot turns green and the Address
+reads `ws://localhost:3058/panel`.
+
+This is the only place a token is ever typed. It is stored in Figma's own
+per-user storage, so the panel reconnects itself every time from now on.
+
+**5. Register the MCP server.**
+
+```bash
+claude mcp add figsnap-mcp -s user -- node /absolute/path/to/FigsnapMCP/agent/mcp-stdio.mjs
+```
+
+Restart the client, then `claude mcp list` shows `figsnap-mcp · ✔ Connected`.
+
+Check the whole chain:
 
 ```bash
 curl -s http://127.0.0.1:3058/health
 # { "ok": true, "panelConnected": true, "editsAllowed": false, ... }
 ```
+
+`panelConnected: true` is the line that matters — it means Figma is on the
+other end.
+
+## The token
+
+**An MCP client never needs it.** This is the part that surprises people:
+`claude mcp add` takes no token, no environment variable, no config. The MCP
+server reads the daemon's own file on the way past.
+
+Only two things use the token, and only one of them is you:
+
+| Who | How it gets it |
+|---|---|
+| The Figma panel | You paste it, once, in **Connect** |
+| `agent/mcp-stdio.mjs` | Reads `~/.figsnap-mcp/agent-token` by itself |
+
+**Where it comes from.** The first time the daemon starts it makes one — 24
+random bytes, base64url — and writes it to `~/.figsnap-mcp/agent-token` with
+mode `600`. Every later start reads that same file back, so the token is stable
+and the panel is not re-paired every morning.
+
+**How to see it again** without restarting anything:
+
+```bash
+cat ~/.figsnap-mcp/agent-token
+```
+
+**Why there is one at all.** The daemon listens on a loopback port, and any web
+page you happen to visit can open a socket to `localhost`. Two things stop it:
+the `Origin` header, checked on upgrade, which a browser cannot forge; and this
+token, because a browser WebSocket cannot set headers. Only `GET /health` is
+reachable without it — so the panel can tell you the daemon is running before it
+has been paired.
+
+**If it leaks**, rotate it:
+
+```bash
+npm run daemon -- --new-token
+```
+
+That writes a fresh one and invalidates the old. Re-paste it in **Connect**; MCP
+clients pick the new one up on their own, because they read the file.
+
+**To use one of your own** — a fixed token in a script, say — set
+`FIGSNAP_MCP_TOKEN` and the daemon uses it instead of the file. Set the same
+variable for the MCP client if it cannot read your home directory.
+`FIGSNAP_MCP_URL` moves the address the client dials.
 
 ## Wiring up an MCP client
 
@@ -89,12 +161,19 @@ claude mcp add figsnap-mcp -s user -- node /absolute/path/to/FigsnapMCP/agent/mc
 `npm run daemon -- --mcp` prints that line with the path already filled in, plus
 the same thing as an `mcpServers` block for clients that take JSON.
 
-Nothing else needs configuring: `agent/mcp-stdio.mjs` defaults to
-`http://127.0.0.1:3058` and reads the token from `~/.figsnap-mcp/agent-token`.
-`FIGSNAP_MCP_URL` and `FIGSNAP_MCP_TOKEN` override either.
-
 Then `claude mcp list` should show `figsnap-mcp · ✔ Connected`, and in a session
 `figma_get_selection` answers about whatever is selected on the canvas.
+
+### When it does not answer
+
+Three things can be wrong, and each says so differently:
+
+| What the tool says | What to do |
+|---|---|
+| `No figsnap-mcp daemon at http://127.0.0.1:3058` | `npm run daemon` |
+| `The Figsnap MCP plugin is not open in Figma` | Open the file and run the plugin |
+| `The figsnap-mcp daemon rejected the token` | `cat ~/.figsnap-mcp/agent-token`, or set `FIGSNAP_MCP_TOKEN` |
+| `Editing the file is switched off` | Turn on **Allow edits** in the plugin's Tools pane |
 
 ### Resources
 

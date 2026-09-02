@@ -38,9 +38,14 @@
               <dd id="fact-edits">off</dd>
             </dl>
             <p class="hint">
-              Start it in a terminal with <code>npm run daemon</code>. It prints a token on
-              the line marked <code>token</code>; paste that below. Pairing is a one-time job —
-              the token is kept in this Figma account's own storage.
+              Start it in a terminal with <code>npm run daemon</code>. It prints the token on
+              the line marked <code>token</code> — or read it back any time with
+              <code>cat ~/.figsnap-mcp/agent-token</code>. Paste it below.
+            </p>
+            <p class="hint">
+              Pairing is a one-time job: the token is kept in this Figma account's own storage,
+              so the panel reconnects itself from then on. If it ever leaks, restart the daemon
+              with <code>--new-token</code> and paste the new one.
             </p>
           </div>
 
@@ -75,8 +80,9 @@
             </div>
             <p class="hint">
               The daemon is the only thing that talks to Figma. An MCP client reaches it
-              through <code>agent/mcp-stdio.mjs</code>, which needs no configuration on this
-              machine — it reads the same token from <code>~/.figsnap-mcp/agent-token</code>.
+              through <code>agent/mcp-stdio.mjs</code> and <b>needs no token of its own</b> —
+              it reads the same <code>~/.figsnap-mcp/agent-token</code> this panel was paired
+              with. Nothing to paste, nothing to configure.
             </p>
             <pre class="snippet mono" id="mcp-add">claude mcp add figsnap-mcp -s user -- node &lt;repo&gt;/agent/mcp-stdio.mjs</pre>
             <p class="hint">
