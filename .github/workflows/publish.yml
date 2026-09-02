@@ -37,11 +37,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 24 and an explicit npm upgrade, because trusted publishing needs npm
+      # CLI 11.5.1 or later: below that the CLI never attempts OIDC. It instead
+      # sends the placeholder token setup-node writes into .npmrc, and the
+      # registry answers 404 on the PUT — npm masks 401 and 403 as 404 — so the
+      # failure reads as "package not found" for a package that plainly exists.
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: https://registry.npmjs.org
-          cache: npm
+
+      - name: npm new enough to do OIDC
+        run: |
+          npm install -g npm@latest
+          npm --version
 
       - run: npm ci
 
