@@ -12,6 +12,10 @@
 
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
+// From `ws`, not the global. globalThis.WebSocket arrived in Node 21, and this
+// package supports Node 20 — so on the oldest runtime it claims, the harness
+// that proves it works was itself a ReferenceError.
+import { WebSocket } from 'ws'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
