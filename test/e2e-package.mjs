@@ -40,6 +40,12 @@ check('the package is not private any more', manifest.private === undefined, Str
 check('it is called figsnap-mcp and carries a licence',
   manifest.name === 'figsnap-mcp' && manifest.license === 'MIT', `${manifest.name} ${manifest.license}`)
 check('it says which Node it needs', /^>=20/.test(manifest.engines?.node ?? ''), manifest.engines?.node)
+// `npm ci` refuses a lockfile whose version disagrees, and CI runs npm ci
+// before it runs anything else — so a hand-edited version breaks the release
+// at the first step, with an error about the lockfile rather than the version.
+check('and the lockfile agrees about the version',
+  JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8')).version === manifest.version,
+  JSON.parse(await readFile(join(root, 'package-lock.json'), 'utf8')).version)
 check('it is ESM, so the .mjs files load as written', manifest.type === 'module', manifest.type)
 check('and it points at a repository, a homepage and an issue tracker',
   typeof manifest.repository?.url === 'string' && typeof manifest.homepage === 'string' &&
