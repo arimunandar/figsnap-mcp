@@ -187,6 +187,31 @@ rather than called for, so a client can `@`-mention them:
 | `figma://library` | Components, styles and variables, with ids |
 | `figma://node/{nodeId}` | One layer — `figma://node/21:10314` |
 
+## The panel
+
+Four panes, and the one it opens on is **Selection**.
+
+**Selection** is a preview of whatever you have picked on the canvas — the
+picture, its name, type, size, child count and node id — with a folder picker
+and a **Save** button beside it. Saving from here is the short way round: no
+switching panes, no hunting for the layer again in a list.
+
+The preview costs one PNG export. The panel used to run a full extraction on
+every selection change — HTML, TSX, two stylesheets and a 2× image — for a
+picture nobody was looking at; the code outputs are what MCP asks for, on
+request, not what a click costs. A small layer is magnified at most 4×, so an
+icon and a screen do not both fill the stage.
+
+**Minimise** (the ▼ at the top right) drops the window to a 44px strip and the
+preview under it, so the canvas is clear while the plugin keeps running — the
+daemon needs the panel open, but you do not need to look at it. The strip still
+names what is selected and still has **Save**, because those are the two things
+worth having while you work. ▲ puts it back to whatever size you had dragged it
+to.
+
+**Connect** and **Tools** are pairing and the tool list; **Saved** is the folder
+manager. Both are described below.
+
 ## The tools
 
 39 of them, 13 read and 26 write. The **Tools** pane lists them all with the

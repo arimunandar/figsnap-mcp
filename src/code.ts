@@ -112,7 +112,6 @@ type ExtractOptions = {
 
 /** Defaults, driven by the plugin's own panel; remote callers override per request. */
 const defaults: ExtractOptions = { scale: 2, selectionOnly: false, inlineInstances: false, outputs: ALL_OUTPUTS }
-let capturing = false
 let captureTimer: number | undefined
 // While minimised the window size is not the user's choice, so it is not stored.
 let minimised = false
@@ -135,6 +134,17 @@ const MINI_PREVIEW_PADDING = 12
 const MINI_PREVIEW_WIDTH = MINI_WIDTH - 16
 const MINI_PREVIEW_MIN = MINI_PREVIEW_WIDTH
 const MINI_PREVIEW_MAX = 520
+
+// The open panel's preview box, at twice the size it is shown in so it stays
+// sharp on a retina screen. Bounded rather than proportional: the point of a
+// preview is to be cheap, and a 4000px frame exported whole on every click is
+// not. `contain` in the panel's CSS does the letterboxing.
+const PANEL_PREVIEW_BOX = { width: 880, height: 880 }
+
+// How far a small layer may be magnified to be worth looking at. A preview that
+// filled the stage whatever it was shown would tell you an icon and a screen are
+// the same size, which is the one thing a preview should never say.
+const MAX_PREVIEW_SCALE = 4
 
 /** The preview's own height for a node, before the strip is added. */
 function miniPreviewHeight(node: SceneNode): number {
@@ -1111,19 +1121,6 @@ async function buildExtraction(node: SceneNode, options: ExtractOptions): Promis
   return extraction
 }
 
-async function extract(node: SceneNode): Promise<void> {
-  if (capturing) return
-  capturing = true
-  send({ type: 'busy' })
-  try {
-    send(await buildExtraction(node, defaults))
-  } catch (error) {
-    send({ type: 'error', message: error instanceof Error ? error.message : String(error) })
-  } finally {
-    capturing = false
-  }
-}
-
 async function extractById(id: string, additive = false): Promise<void> {
   const node = await figma.getNodeByIdAsync(id)
   if (!node || node.removed || !('exportAsync' in node)) {
@@ -1142,7 +1139,8 @@ async function extractById(id: string, additive = false): Promise<void> {
 
   figma.currentPage.selection = [scene]
   figma.viewport.scrollAndZoomIntoView([scene])
-  await extract(scene)
+  // No extraction here: changing the selection fires selectionchange, which
+  // draws the preview. Doing it twice was only ever twice the work.
 }
 
 function extractSelection(): void {
@@ -1153,36 +1151,43 @@ function extractSelection(): void {
     ids: selection.map((node) => node.id),
     rows: selection.slice(0, MAX_BATCH).map(toRow),
   })
-  // Auto-extracting every node of a multi-selection would be surprising and
-  // slow; the panel offers an explicit "Extract N selected" instead.
+  // One node is a preview; several is a count and a Save button, because a
+  // thumbnail of "three things" is not a picture of anything.
   if (selection.length !== 1) {
-    if (minimised) {
-      // Nothing to preview, so the window is the strip and nothing else.
-      send({ type: 'thumb', id: null, png: null })
-      resizeMini(0)
-    }
+    send({ type: 'thumb', id: null, png: null })
+    // Nothing to preview, so minimised the window is the strip and nothing else.
+    if (minimised) resizeMini(0)
     return
   }
-  // Minimised there is no room for the full preview, and clicking around the
-  // canvas is the whole point — so the CSS walk and the 2x export are skipped in
-  // favour of one small thumbnail.
-  if (minimised) void sendThumb(selection[0])
-  else void extract(selection[0])
+  if (minimised) {
+    // The window is the preview here, so it is sized to the node first and the
+    // export is measured against what the strip can actually show.
+    const previewHeight = miniPreviewHeight(selection[0])
+    resizeMini(previewHeight)
+    void sendThumb(selection[0], { width: MINI_WIDTH * 2, height: previewHeight * 2 })
+    return
+  }
+  void sendThumb(selection[0], PANEL_PREVIEW_BOX)
 }
 
-async function sendThumb(node: SceneNode): Promise<void> {
-  const previewHeight = miniPreviewHeight(node)
-  resizeMini(previewHeight)
-  // Twice the box it will be shown in, so it stays sharp on a retina screen
-  // without exporting anything like the full 2x image the open panel uses.
-  const box = { width: MINI_WIDTH * 2, height: previewHeight * 2 }
+/**
+ * A picture of one node, sized for wherever the panel is going to put it.
+ *
+ * This is the whole of what the panel needs on a selection change. Building the
+ * HTML, the TSX and three stylesheets as well — which is what the open panel
+ * used to do — is a great deal of work for something nobody reads: the code
+ * outputs go out over MCP, on request, not on every click of the canvas.
+ */
+async function sendThumb(node: SceneNode, box: { width: number; height: number }): Promise<void> {
   try {
-    // Whichever side would overflow decides the constraint, so a tall thin frame
-    // does not export as a several-thousand-pixel image.
-    const wide = node.width / node.height > box.width / box.height
+    // Scale, not a target width. Constraining to the box means filling it, and
+    // an 8x15 glyph asked to fill 880px is a 110x upscale — several megabytes of
+    // blur for a layer the size of a full stop. So: shrink whatever overflows,
+    // and magnify a small layer only enough to be legible.
+    const fit = Math.min(box.width / Math.max(node.width, 1), box.height / Math.max(node.height, 1))
     const png = await node.exportAsync({
       format: 'PNG',
-      constraint: wide ? { type: 'WIDTH', value: box.width } : { type: 'HEIGHT', value: box.height },
+      constraint: { type: 'SCALE', value: Math.max(0.02, Math.min(MAX_PREVIEW_SCALE, fit)) },
       useAbsoluteBounds: true,
     })
     send({ type: 'thumb', id: node.id, png })

@@ -27,6 +27,15 @@ type SavedEntry = {
   missing?: boolean
 }
 
+type TreeRow = {
+  id: string
+  name: string
+  type: string
+  width: number
+  height: number
+  childCount: number
+}
+
 type ToolDescription = {
   name: string
   title?: string
@@ -40,6 +49,8 @@ type Incoming =
   | PluginResponse
   | { type: 'agent-settings'; url: string; token: string; cwd: string; harness: string; sessionId: string; writes: boolean; auto: boolean }
   | { type: 'saved'; folders: FolderCount[]; entries: SavedEntry[] }
+  | { type: 'selected'; id: string | null; ids: string[]; rows: TreeRow[] }
+  | { type: 'thumb'; id: string | null; png: Uint8Array | null }
   | { type: 'save-result'; added: number; already: number; moved: number; full: number; folder: string }
   | { type: 'error'; message: string }
   | { type: string; [key: string]: unknown }
@@ -58,6 +69,7 @@ type Outgoing =
   | { type: 'delete-folder'; name: string; deleteEntries?: boolean }
   | { type: 'move-saved'; ids: string[]; folder: string }
   | { type: 'refresh-saved' }
+  | { type: 'minimise'; on: boolean }
   | { type: 'pick'; id: string }
 
 function post(message: Outgoing): void {
@@ -92,6 +104,23 @@ const toolCount = $<HTMLElement>('tool-count')
 const toolList = $<HTMLUListElement>('tool-list')
 const toolsEmpty = $<HTMLParagraphElement>('tools-empty')
 
+const minimiseButton = $<HTMLButtonElement>('minimise')
+const miniTitle = $<HTMLElement>('mini-title')
+const miniSave = $<HTMLButtonElement>('mini-save')
+const miniStage = $<HTMLElement>('mini-stage')
+const miniPreview = $<HTMLImageElement>('mini-preview')
+const miniEmpty = $<HTMLParagraphElement>('mini-empty')
+
+const preview = $<HTMLImageElement>('preview')
+const previewEmpty = $<HTMLParagraphElement>('preview-empty')
+const selName = $<HTMLElement>('sel-name')
+const selType = $<HTMLElement>('sel-type')
+const selSize = $<HTMLElement>('sel-size')
+const selChildren = $<HTMLElement>('sel-children')
+const selId = $<HTMLElement>('sel-id')
+const saveFolder = $<HTMLSelectElement>('save-folder')
+const saveCurrent = $<HTMLButtonElement>('save-current')
+
 const savedList = $<HTMLUListElement>('saved-list')
 const savedEmpty = $<HTMLParagraphElement>('saved-empty')
 const savedCount = $<HTMLElement>('saved-count')
@@ -115,6 +144,9 @@ let folders: FolderCount[] = []
 let entries: SavedEntry[] = []
 /** null is "everything"; '' is the root; anything else is a folder by name. */
 let activeFolder: string | null = null
+/** What the designer has selected on the canvas, as the main thread reports it. */
+let selection: TreeRow[] = []
+let minimised = false
 
 let statusTimer: number | undefined
 
@@ -381,6 +413,101 @@ function paintTools(): void {
 
 toolFilter.addEventListener('input', paintTools)
 
+// ---------------------------------------------------------------- selection
+//
+// The main thread sends two frames per selection change: `selected`, which is
+// the names and sizes, and `thumb`, which is one exported PNG sized for
+// wherever the panel is about to draw it. Nothing else — the HTML, the TSX and
+// the stylesheets are what MCP asks for, on request, not what a click costs.
+
+/** PNG bytes cross the plugin boundary as bytes; an <img> wants a URL. */
+function toDataUri(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let offset = 0; offset < bytes.length; offset += chunk) {
+    binary += String.fromCharCode(...Array.from(bytes.subarray(offset, offset + chunk)))
+  }
+  return `data:image/png;base64,${btoa(binary)}`
+}
+
+function showPreview(uri: string | null): void {
+  for (const [image, empty] of [
+    [preview, previewEmpty],
+    [miniPreview, miniEmpty],
+  ] as [HTMLImageElement, HTMLParagraphElement][]) {
+    if (uri === null) {
+      image.removeAttribute('src')
+      image.hidden = true
+      empty.hidden = false
+    } else {
+      image.src = uri
+      image.hidden = false
+      empty.hidden = true
+    }
+  }
+}
+
+function paintSelection(): void {
+  const one = selection.length === 1 ? selection[0] : null
+  const many = selection.length > 1
+
+  selName.textContent = one ? one.name : many ? `${selection.length} layers` : '—'
+  selType.textContent = one ? one.type : many ? [...new Set(selection.map((r) => r.type))].join(', ') : '—'
+  selSize.textContent = one ? `${Math.round(one.width)} × ${Math.round(one.height)}` : '—'
+  selChildren.textContent = one ? String(one.childCount) : '—'
+  selId.textContent = one ? one.id : '—'
+
+  const anything = selection.length > 0
+  saveCurrent.disabled = !anything
+  miniSave.disabled = !anything
+  saveCurrent.textContent = many ? `Save ${selection.length}` : 'Save'
+  miniTitle.textContent = one ? one.name : many ? `${selection.length} layers selected` : 'Nothing selected'
+  previewEmpty.textContent = many
+    ? `${selection.length} layers selected — a preview shows one at a time.`
+    : 'Select a layer on the canvas and it appears here.'
+  miniEmpty.textContent = many ? `${selection.length} layers selected` : 'Select a layer on the canvas.'
+}
+
+/** The folders a new save can go into, kept in step with the Saved pane. */
+function paintSaveFolders(): void {
+  const wanted = saveFolder.value
+  saveFolder.textContent = ''
+  for (const folder of folders) {
+    const option = document.createElement('option')
+    option.value = folder.name
+    option.textContent = folder.name === '' ? 'Root' : folder.name
+    saveFolder.appendChild(option)
+  }
+  saveFolder.value = folders.some((folder) => folder.name === wanted) ? wanted : ''
+}
+
+for (const button of [saveCurrent, miniSave]) {
+  button.addEventListener('click', () => {
+    if (selection.length === 0) return
+    post({ type: 'save-selection', folder: saveFolder.value })
+  })
+}
+
+// ------------------------------------------------------------- minimising
+//
+// The window size is the main thread's — resizeMini in src/code.ts, which sizes
+// the strip to whatever is selected. This side only decides what is left on
+// screen at 44px tall, and tells the main thread which mode it is in so the
+// exported preview is measured against the right box.
+
+function setMinimised(on: boolean, tell = true): void {
+  minimised = on
+  document.body.classList.toggle('is-mini', on)
+  miniStage.hidden = !on
+  miniTitle.hidden = !on
+  miniSave.hidden = !on
+  minimiseButton.innerHTML = on ? '&#9650;' : '&#9660;'
+  minimiseButton.title = on ? 'Restore the panel' : 'Minimise — leave the canvas clear'
+  if (tell) post({ type: 'minimise', on })
+}
+
+minimiseButton.addEventListener('click', () => setMinimised(!minimised))
+
 // -------------------------------------------------------------------- saved
 
 /** Every folder name a caller may move an entry into, root first. */
@@ -633,10 +760,26 @@ window.onmessage = (event: MessageEvent) => {
       return
     }
 
+    case 'selected': {
+      const picked = message as Extract<Incoming, { type: 'selected' }>
+      selection = picked.rows
+      paintSelection()
+      return
+    }
+
+    case 'thumb': {
+      const thumb = message as Extract<Incoming, { type: 'thumb' }>
+      // A layer that cannot be exported answers with a null png rather than an
+      // error, so an empty stage is a normal outcome, not a failure.
+      showPreview(thumb.png === null || thumb.png === undefined ? null : toDataUri(thumb.png))
+      return
+    }
+
     case 'saved': {
       const set = message as Extract<Incoming, { type: 'saved' }>
       folders = set.folders
       entries = set.entries
+      paintSaveFolders()
       // A folder that has just been deleted or renamed away leaves the view
       // pointing at nothing; fall back to everything rather than to empty.
       if (activeFolder !== null && !folders.some((folder) => folder.name === activeFolder)) activeFolder = null
@@ -684,6 +827,9 @@ paintEdits()
 paintTools()
 paintFolders()
 paintSaved()
+paintSelection()
+paintSaveFolders()
+setMinimised(false, false)
 showLink('off')
 post({ type: 'ready' })
 

@@ -8,19 +8,62 @@
     <header class="topbar">
       <span class="brand">Figsnap<span class="brand-dim">MCP</span></span>
       <nav class="tabs" id="tabs">
-        <button class="tab is-active" type="button" data-pane="connect">Connect</button>
+        <button class="tab is-active" type="button" data-pane="selection">Selection</button>
+        <button class="tab" type="button" data-pane="connect">Connect</button>
         <button class="tab" type="button" data-pane="tools">Tools</button>
         <button class="tab" type="button" data-pane="saved">Saved</button>
       </nav>
+      <!-- Minimised, the tab strip is gone and this says what is selected. -->
+      <span class="mini-title" id="mini-title" hidden>Nothing selected</span>
       <span class="link">
         <span id="link-dot" class="dot off"></span>
         <span id="link-label" class="link-label">not connected</span>
       </span>
+      <button id="mini-save" class="button primary small" type="button" hidden disabled>Save</button>
+      <button id="minimise" class="button ghost icon" type="button" title="Minimise — leave the canvas clear">&#9660;</button>
     </header>
 
+    <!-- The preview, minimised: the window is sized to it by the main thread. -->
+    <div class="mini-stage" id="mini-stage" hidden>
+      <img id="mini-preview" class="preview" alt="" hidden />
+      <p id="mini-empty" class="empty">Select a layer on the canvas.</p>
+    </div>
+
     <main class="panes">
+      <!-- ----------------------------------------------------- selection -->
+      <section class="pane is-active" id="pane-selection">
+        <div class="selection">
+          <div class="stage" id="stage">
+            <img id="preview" class="preview" alt="" hidden />
+            <p id="preview-empty" class="empty">Select a layer on the canvas and it appears here.</p>
+          </div>
+          <aside class="selection-side">
+            <dl class="facts">
+              <dt>Name</dt>
+              <dd id="sel-name">—</dd>
+              <dt>Type</dt>
+              <dd id="sel-type">—</dd>
+              <dt>Size</dt>
+              <dd id="sel-size">—</dd>
+              <dt>Children</dt>
+              <dd id="sel-children">—</dd>
+              <dt>Node id</dt>
+              <dd id="sel-id" class="mono">—</dd>
+            </dl>
+            <div class="row">
+              <select id="save-folder" class="entry-move" title="Which folder to save into"></select>
+              <button id="save-current" class="button primary" type="button" disabled>Save</button>
+            </div>
+            <p id="sel-note" class="hint">
+              Whatever is selected here is what <code>figma_get_selection</code> answers with, and
+              what <code>figma_extract</code> reads when it is given no node id.
+            </p>
+          </aside>
+        </div>
+      </section>
+
       <!-- ------------------------------------------------------- connect -->
-      <section class="pane is-active" id="pane-connect">
+      <section class="pane" id="pane-connect">
         <div class="column">
           <div class="card">
             <div class="card-head">
@@ -136,7 +179,7 @@
           </aside>
           <div class="scroll entries">
             <ul id="saved-list" class="saved"></ul>
-            <p id="saved-empty" class="empty">Nothing saved in this file yet. Select a layer and press <b>Save selection</b>.</p>
+            <p id="saved-empty" class="empty">Nothing saved in this file yet. Select a layer and press <b>Save</b>.</p>
           </div>
         </div>
       </section>

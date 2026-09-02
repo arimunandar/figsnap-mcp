@@ -347,7 +347,16 @@ export async function startPlugin({
         storage.set(key, structuredClone(value))
       },
     },
-    ui: { onmessage: null, postMessage: (message) => toPanel(message), resize() {} },
+    // Resizes are recorded rather than ignored: minimising is a window size
+    // change and nothing else, so this is the only evidence it happened.
+    ui: {
+      onmessage: null,
+      postMessage: (message) => toPanel(message),
+      resizes: [],
+      resize(width, height) {
+        figma.ui.resizes.push({ width, height })
+      },
+    },
     // Driving the canvas. Recorded rather than ignored: "the agent found it"
     // and "the designer can see it" are different claims, and this is the only
     // evidence for the second.

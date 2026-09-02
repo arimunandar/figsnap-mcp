@@ -84,7 +84,91 @@ check('the panel announces itself to the main thread',
   sent.some((message) => message.type === 'ready'), JSON.stringify(sent))
 check('and dials nothing until it has been paired', dialled.length === 0, dialled.join())
 check('the address it will dial is on screen', $('url').value === 'ws://localhost:3058/panel', $('url').value)
-check('three panes and no more', window.document.querySelectorAll('.pane').length === 3)
+check('four panes and no more', window.document.querySelectorAll('.pane').length === 4)
+check('and Selection is the one it opens on',
+  window.document.querySelector('.pane.is-active').id === 'pane-selection',
+  window.document.querySelector('.pane.is-active').id)
+
+// ------------------------------------------------------- selection preview
+
+check('with nothing selected the stage says so',
+  $('preview').hidden && !$('preview-empty').hidden && $('save-current').disabled)
+
+fromMain({
+  type: 'selected',
+  id: '1:2',
+  ids: ['1:2'],
+  rows: [{ id: '1:2', name: 'Card', type: 'FRAME', width: 320.4, height: 180, childCount: 3 }],
+})
+await tick(20)
+check('a selected layer fills in its facts',
+  $('sel-name').textContent === 'Card' && $('sel-type').textContent === 'FRAME' &&
+  $('sel-size').textContent === '320 × 180' && $('sel-children').textContent === '3' &&
+  $('sel-id').textContent === '1:2',
+  [$('sel-name').textContent, $('sel-size').textContent].join(' '))
+check('and Save becomes available', $('save-current').disabled === false)
+
+// The main thread sends bytes; an <img> needs a URL, and the panel is the only
+// side that can do the conversion.
+const PNG = new window.Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+fromMain({ type: 'thumb', id: '1:2', png: PNG })
+await tick(20)
+check('the thumbnail is drawn as a data URI',
+  $('preview').hidden === false && $('preview').src === 'data:image/png;base64,iVBORw0KGgo=',
+  $('preview').src.slice(0, 60))
+check('and the minimised stage shows the same picture',
+  $('mini-preview').src === $('preview').src)
+
+sent.length = 0
+$('save-current').click()
+check('Save saves what is selected, into the folder in the picker',
+  sent.at(-1)?.type === 'save-selection' && sent.at(-1).folder === '', JSON.stringify(sent.at(-1)))
+
+fromMain({
+  type: 'selected',
+  id: '1:2',
+  ids: ['1:2', '1:3'],
+  rows: [
+    { id: '1:2', name: 'Card', type: 'FRAME', width: 320, height: 180, childCount: 3 },
+    { id: '1:3', name: 'Label', type: 'TEXT', width: 80, height: 20, childCount: 0 },
+  ],
+})
+fromMain({ type: 'thumb', id: null, png: null })
+await tick(20)
+check('several layers are a count, not a picture',
+  $('sel-name').textContent === '2 layers' && $('save-current').textContent === 'Save 2' &&
+  $('preview').hidden === true,
+  `${$('sel-name').textContent} / ${$('save-current').textContent}`)
+check('and the type column says which kinds they are',
+  $('sel-type').textContent === 'FRAME, TEXT', $('sel-type').textContent)
+
+// ------------------------------------------------------------- minimising
+
+sent.length = 0
+$('minimise').click()
+await tick(20)
+check('minimising tells the main thread, which is what resizes the window',
+  sent.at(-1)?.type === 'minimise' && sent.at(-1).on === true, JSON.stringify(sent.at(-1)))
+check('the tabs and the panes go, the strip stays',
+  window.document.body.className.includes('is-mini') &&
+  $('mini-stage').hidden === false && $('mini-title').hidden === false &&
+  $('mini-save').hidden === false,
+  window.document.body.className)
+check('and the strip names what is selected', $('mini-title').textContent === '2 layers selected',
+  $('mini-title').textContent)
+
+sent.length = 0
+$('mini-save').click()
+check('the strip can save without being restored first',
+  sent.at(-1)?.type === 'save-selection', JSON.stringify(sent.at(-1)))
+
+sent.length = 0
+$('minimise').click()
+await tick(20)
+check('restoring says so too',
+  sent.at(-1)?.on === false && !window.document.body.className.includes('is-mini') &&
+  $('mini-stage').hidden === true,
+  JSON.stringify(sent.at(-1)))
 
 // Settings arrive from clientStorage a moment later; an unpaired panel stays put.
 fromMain({ type: 'agent-settings', url: 'ws://localhost:3058/panel', token: '', cwd: '', harness: '', sessionId: '', writes: false, auto: true })

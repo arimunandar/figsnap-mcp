@@ -30,6 +30,12 @@
   box-sizing: border-box;
 }
 
+/* A class that sets `display` beats the UA stylesheet's [hidden], which is how
+   the minimised strip came to be drawn permanently. Anything hidden is hidden. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   height: 100%;
@@ -641,5 +647,139 @@ code,
 
   .hint.small {
     display: none;
+  }
+}
+
+/* --------------------------------------------------------------- selection */
+
+.selection {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 280px;
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gap);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  /* A checkerboard, so a transparent layer reads as transparent rather than as
+     whatever the panel's background happens to be. */
+  background-color: var(--bg-sunken);
+  background-image:
+    linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%),
+    linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+.preview {
+  max-width: 100%;
+  max-height: 100%;
+  /* The image is exported at the node's own aspect ratio; letterbox it rather
+     than distort it. */
+  object-fit: contain;
+  display: block;
+}
+
+.selection-side {
+  border-left: 1px solid var(--line);
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.selection-side .facts {
+  grid-template-columns: 68px 1fr;
+}
+
+.selection-side .facts dd {
+  word-break: break-word;
+}
+
+.selection-side .row .entry-move {
+  flex: 1;
+  max-width: none;
+}
+
+/* ------------------------------------------------------------- minimised */
+/*
+ * A strip of header and a preview, and nothing else. The window size is the
+ * main thread's job — resizeMini in src/code.ts — so all this does is decide
+ * what is still on screen at 44px tall.
+ */
+
+body.is-mini .tabs,
+body.is-mini .panes,
+body.is-mini .footbar {
+  display: none;
+}
+
+body.is-mini .topbar {
+  height: 44px;
+  border-bottom: 1px solid var(--line);
+}
+
+body.is-mini .link-label {
+  display: none;
+}
+
+.mini-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.mini-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  overflow: hidden;
+  background-color: var(--bg-sunken);
+  background-image:
+    linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%),
+    linear-gradient(45deg, var(--bg-hover) 25%, transparent 25%, transparent 75%, var(--bg-hover) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+}
+
+.mini-stage .empty {
+  padding: 0;
+  font-size: 10.5px;
+}
+
+.button.icon {
+  padding: 4px 8px;
+  line-height: 1;
+  font-size: 10px;
+}
+
+/* Narrow: the facts rail goes under the picture rather than squeezing it. */
+@media (max-width: 620px) {
+  .selection {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .selection-side {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .selection-side .facts {
+    grid-template-columns: 68px 1fr 68px 1fr;
   }
 }
